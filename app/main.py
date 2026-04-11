@@ -1,7 +1,7 @@
 import os
 import httpx
 import tempfile
-from fastapi import FastAPI, Request, BackgroundTasks, Form
+from fastapi import FastAPI, Request, BackgroundTasks, Form, UploadFile, File
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,6 +14,7 @@ from app.analytics import (
     get_store_summary, get_top_products,
     get_low_stock, get_dead_stock, get_daily_trend
 )
+from datetime import date
 
 load_dotenv()
 
@@ -132,6 +133,10 @@ def dashboard(request: Request):
     if not phone:
         return RedirectResponse(url="/login", status_code=302)
 
+    # Admin should use /admin not /dashboard
+    if is_admin(phone):
+        return RedirectResponse(url="/admin", status_code=302)
+
     store = get_store_by_phone_number(phone)
     if not store:
         return RedirectResponse(url="/login", status_code=302)
@@ -159,7 +164,8 @@ def dashboard(request: Request):
             "low_stock":    low_stock,
             "dead_stock":   dead_stock,
             "daily_trend":  daily_trend,
-            "uploads":      uploads
+            "uploads":      uploads,
+            "today":        date.today().isoformat() 
         }
     )
 
@@ -342,6 +348,133 @@ def admin_store_detail(request: Request, store_id: int):
             "uploads":      uploads
         }
     )
+
+# ─────────────────────────────────────────
+# FILE UPLOAD FROM DASHBOARD
+# ─────────────────────────────────────────
+
+@app.post("/upload-file")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    store_id: int = None
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    # If store_id provided and user is admin — use that store
+    # Otherwise use the logged in user's store
+    if store_id and is_admin(phone):
+        store = run_query(
+            "select * from stores where id = %s", (store_id,)
+        )
+        store = store[0] if store else None
+    else:
+        store = get_store_by_phone_number(phone)
+
+    if not store:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        suffix = os.path.splitext(file.filename)[1] or '.xlsx'
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=suffix
+        ) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        result = process_file(tmp_path, store['id'])
+
+        run_query('''
+            insert into uploads
+            (store_id, file_name, rows_processed, rows_failed, status)
+            values (%s, %s, %s, %s, %s)
+        ''', (
+            store['id'],
+            file.filename,
+            result['rows_processed'],
+            result['rows_failed'],
+            result['status']
+        ), fetch=False)
+
+        os.unlink(tmp_path)
+
+        redirect_url = f"/admin/store/{store['id']}?success=Processed+{result['rows_processed']}+rows" \
+            if is_admin(phone) else \
+            f"/dashboard?success=Processed+{result['rows_processed']}+rows+successfully"
+
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    except Exception as e:
+        print(f"Upload error: {e}")
+        redirect_url = f"/admin/store/{store['id']}?error=File+processing+failed" \
+            if is_admin(phone) else \
+            "/dashboard?error=File+processing+failed.+Check+column+names."
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@app.post("/add-sale")
+def add_sale(
+    request: Request,
+    store_id:       int = None,
+    sale_date:      str = Form(...),
+    product_name:   str = Form(...),
+    category:       str = Form(""),
+    quantity_sold:  float = Form(...),
+    selling_price:  float = Form(...),
+    purchase_price: float = Form(0),
+    opening_stock:  float = Form(None),
+    closing_stock:  float = Form(None)
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    # If store_id provided and user is admin — use that store
+    if store_id and is_admin(phone):
+        store = run_query(
+            "select * from stores where id = %s", (store_id,)
+        )
+        store = store[0] if store else None
+    else:
+        store = get_store_by_phone_number(phone)
+
+    if not store:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        run_query('''
+            insert into sales_raw
+            (store_id, sale_date, product_name, category,
+             quantity_sold, selling_price, purchase_price,
+             opening_stock, closing_stock)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            store['id'],
+            sale_date,
+            product_name.lower().strip(),
+            category.lower().strip() or None,
+            quantity_sold,
+            selling_price,
+            purchase_price,
+            opening_stock,
+            closing_stock
+        ), fetch=False)
+
+        redirect_url = f"/admin/store/{store['id']}?success=Sale+added+successfully" \
+            if is_admin(phone) else \
+            "/dashboard?success=Sale+added+successfully"
+
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    except Exception as e:
+        print(f"Manual entry error: {e}")
+        redirect_url = f"/admin/store/{store['id']}?error=Failed+to+add+sale" \
+            if is_admin(phone) else \
+            "/dashboard?error=Failed+to+add+sale.+Please+try+again."
+        return RedirectResponse(url=redirect_url, status_code=302)
 
 # ─────────────────────────────────────────
 # WHATSAPP WEBHOOK
