@@ -31,11 +31,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 def home():
-    return {
-        "product": "StoreIQ",
-        "status": "running",
-        "message": "WhatsApp Analytics for Local Stores"
-    }
+    return RedirectResponse(url="/login", status_code=302)
 
 # ─────────────────────────────────────────
 # HEALTH CHECK
