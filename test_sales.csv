@@ -1,0 +1,6 @@
+sale_date,product_name,category,quantity_sold,selling_price,purchase_price,opening_stock,closing_stock
+2026-04-01,Amul Butter,dairy,10,60,52,20,10
+2026-04-01,Parle-G,biscuits,25,10,8,50,25
+2026-04-02,Amul Butter,dairy,8,60,52,10,2
+2026-04-02,Surf Excel,household,5,120,100,15,10
+2026-04-03,Parle-G,biscuits,30,10,8,25,0
