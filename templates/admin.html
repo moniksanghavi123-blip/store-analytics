@@ -38,35 +38,77 @@
             </div>
         </div>
 
-        <!-- ALL STORES -->
+        <!-- ALL STORES: mobile cards / desktop table (768px) -->
         <div class="section">
             <h2>🏪 All Stores</h2>
             {% if stores %}
-            {% for store in stores %}
-            <div class="store-row">
-                <div class="info">
-                    <div class="name">{{ store.shop_name.replace('_',' ') | title }}</div>
-                    <div class="meta">
-                        {{ store.owner_name }} &bull;
-                        <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
-                            {{ store.plan | title }}
-                        </span>
-                        &bull;
-                        {% if store.days_inactive is none %}
-                        <span class="badge grey">No Data</span>
-                        {% elif store.days_inactive > 3 %}
-                        <span class="badge red">Inactive</span>
-                        {% else %}
-                        <span class="badge green">Active</span>
-                        {% endif %}
+            <div class="only-mobile">
+                {% for store in stores %}
+                <div class="store-row">
+                    <div class="info">
+                        <div class="name">{{ store.shop_name.replace('_',' ') | title }}</div>
+                        <div class="meta">
+                            {{ store.owner_name }} &bull;
+                            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+                                {{ store.plan | title }}
+                            </span>
+                            &bull;
+                            {% if store.days_inactive is none %}
+                            <span class="badge grey">No Data</span>
+                            {% elif store.days_inactive > 3 %}
+                            <span class="badge red">Inactive</span>
+                            {% else %}
+                            <span class="badge green">Active</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="right">
+                        <div class="revenue">₹{{ store.revenue_7d or 0 }}</div>
+                        <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
                     </div>
                 </div>
-                <div class="right">
-                    <div class="revenue">₹{{ store.revenue_7d or 0 }}</div>
-                    <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Store</th>
+                                <th>Owner</th>
+                                <th>Plan</th>
+                                <th>Status</th>
+                                <th>Revenue (7d)</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for store in stores %}
+                            <tr>
+                                <td>{{ store.shop_name.replace('_',' ') | title }}</td>
+                                <td>{{ store.owner_name }}</td>
+                                <td>
+                                    <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+                                        {{ store.plan | title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if store.days_inactive is none %}
+                                    <span class="badge grey">No Data</span>
+                                    {% elif store.days_inactive > 3 %}
+                                    <span class="badge red">Inactive</span>
+                                    {% else %}
+                                    <span class="badge green">Active</span>
+                                    {% endif %}
+                                </td>
+                                <td>₹{{ store.revenue_7d or 0 }}</td>
+                                <td><a href="/admin/store/{{ store.id }}" class="view-link">View →</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            {% endfor %}
             {% else %}
             <p class="empty">No stores yet.</p>
             {% endif %}
@@ -76,34 +118,55 @@
         <div class="section">
             <h2>📁 Recent Uploads — All Stores</h2>
             {% if recent_uploads %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Store</th>
-                        <th>File</th>
-                        <th>Rows</th>
-                        <th>Status</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for u in recent_uploads %}
-                    <tr>
-                        <td>{{ u.shop_name.replace('_',' ') | title }}</td>
-                        <td>{{ u.file_name }}</td>
-                        <td>{{ u.rows_processed }}</td>
-                        <td>
-                            {% if u.status == 'success' %}
-                            <span class="badge green">Success</span>
-                            {% else %}
-                            <span class="badge yellow">Partial</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ u.uploaded_at.strftime('%d %b %I:%M %p') }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="only-mobile">
+                {% for u in recent_uploads %}
+                <div class="row-card">
+                    <div class="row-card-title">{{ u.file_name }}</div>
+                    <div class="kv"><span class="k">Store</span><span class="v sans">{{ u.shop_name.replace('_',' ') | title }}</span></div>
+                    <div class="kv"><span class="k">Rows</span><span class="v">{{ u.rows_processed }}</span></div>
+                    <div class="kv"><span class="k">Status</span><span class="v sans">
+                        {% if u.status == 'success' %}
+                        <span class="badge green">Success</span>
+                        {% else %}
+                        <span class="badge yellow">Partial</span>
+                        {% endif %}
+                    </span></div>
+                    <div class="kv"><span class="k">Time</span><span class="v sans">{{ u.uploaded_at.strftime('%d %b %I:%M %p') }}</span></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Store</th>
+                                <th>File</th>
+                                <th>Rows</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in recent_uploads %}
+                            <tr>
+                                <td>{{ u.shop_name.replace('_',' ') | title }}</td>
+                                <td>{{ u.file_name }}</td>
+                                <td>{{ u.rows_processed }}</td>
+                                <td>
+                                    {% if u.status == 'success' %}
+                                    <span class="badge green">Success</span>
+                                    {% else %}
+                                    <span class="badge yellow">Partial</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ u.uploaded_at.strftime('%d %b %I:%M %p') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             {% else %}
             <p style="color:#888; font-size:14px;">No uploads yet.</p>
             {% endif %}

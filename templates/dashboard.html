@@ -39,23 +39,49 @@
             </div>
         </div>
 
-        <!-- TOP PRODUCTS -->
+        <!-- TOP PRODUCTS: mobile cards / desktop table (768px) -->
         <div class="section">
             <h2>🔥 Top Products — Last 7 Days</h2>
             {% if top_products %}
-            <div class="data-list">
-                {% for p in top_products %}
-                <div class="data-card">
-                    <div>
-                        <div class="name">{{ p.product_name | title }}</div>
-                        <div class="sub">{{ p.category | title if p.category else 'Uncategorized' }}</div>
+            <div class="only-mobile">
+                <div class="data-list">
+                    {% for p in top_products %}
+                    <div class="data-card">
+                        <div>
+                            <div class="name">{{ p.product_name | title }}</div>
+                            <div class="sub">{{ p.category | title if p.category else 'Uncategorized' }}</div>
+                        </div>
+                        <div class="amount">
+                            ₹{{ p.total_revenue }}
+                            <span class="units">{{ p.total_units | int }} units</span>
+                        </div>
                     </div>
-                    <div class="amount">
-                        ₹{{ p.total_revenue }}
-                        <span class="units">{{ p.total_units | int }} units</span>
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Category</th>
+                                <th>Units</th>
+                                <th>Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in top_products %}
+                            <tr>
+                                <td>{{ p.product_name | title }}</td>
+                                <td>{{ p.category | title if p.category else 'Uncategorized' }}</td>
+                                <td>{{ p.total_units | int }}</td>
+                                <td>₹{{ p.total_revenue }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
             <p class="empty">No sales data yet.</p>
@@ -66,25 +92,36 @@
         <div class="section">
             <h2>📅 Daily Sales — Last 7 Days</h2>
             {% if daily_trend %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Revenue</th>
-                            <th>Profit</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for d in daily_trend %}
-                        <tr>
-                            <td>{{ d.sale_date }}</td>
-                            <td>₹{{ d.revenue }}</td>
-                            <td>₹{{ d.profit }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="only-mobile">
+                {% for d in daily_trend %}
+                <div class="row-card">
+                    <div class="row-card-title">{{ d.sale_date }}</div>
+                    <div class="kv"><span class="k">Revenue</span><span class="v">₹{{ d.revenue }}</span></div>
+                    <div class="kv"><span class="k">Profit</span><span class="v">₹{{ d.profit }}</span></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Revenue</th>
+                                <th>Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in daily_trend %}
+                            <tr>
+                                <td>{{ d.sale_date }}</td>
+                                <td>₹{{ d.revenue }}</td>
+                                <td>₹{{ d.profit }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
             <p style="color:#888; font-size:14px;">No data yet.</p>
@@ -95,35 +132,56 @@
         <div class="section">
             <h2>⚠️ Inventory Alerts</h2>
             {% if low_stock %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Stock Left</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in low_stock %}
-                        {% if item.closing_stock is not none and item.closing_stock < 10 %}
-                        <tr>
-                            <td>{{ item.product_name | title }}</td>
-                            <td>{{ item.closing_stock | int }}</td>
-                            <td>
-                                {% if item.closing_stock == 0 %}
-                                <span class="badge red">Out of Stock</span>
-                                {% elif item.closing_stock < 5 %}
-                                <span class="badge red">Critical Low</span>
-                                {% else %}
-                                <span class="badge yellow">Low Stock</span>
-                                {% endif %}
-                            </td>
-                        </tr>
+            <div class="only-mobile">
+                {% for item in low_stock %}
+                {% if item.closing_stock is not none and item.closing_stock < 10 %}
+                <div class="row-card">
+                    <div class="row-card-title">{{ item.product_name | title }}</div>
+                    <div class="kv"><span class="k">Stock left</span><span class="v">{{ item.closing_stock | int }}</span></div>
+                    <div class="kv"><span class="k">Status</span><span class="v sans">
+                        {% if item.closing_stock == 0 %}
+                        <span class="badge red">Out of Stock</span>
+                        {% elif item.closing_stock < 5 %}
+                        <span class="badge red">Critical Low</span>
+                        {% else %}
+                        <span class="badge yellow">Low Stock</span>
                         {% endif %}
-                        {% endfor %}
-                    </tbody>
-                </table>
+                    </span></div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Stock Left</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in low_stock %}
+                            {% if item.closing_stock is not none and item.closing_stock < 10 %}
+                            <tr>
+                                <td>{{ item.product_name | title }}</td>
+                                <td>{{ item.closing_stock | int }}</td>
+                                <td>
+                                    {% if item.closing_stock == 0 %}
+                                    <span class="badge red">Out of Stock</span>
+                                    {% elif item.closing_stock < 5 %}
+                                    <span class="badge red">Critical Low</span>
+                                    {% else %}
+                                    <span class="badge yellow">Low Stock</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
             <p style="color:#888; font-size:14px;">All stocks are healthy ✅</p>
@@ -134,29 +192,40 @@
         <div class="section">
             <h2>😴 Dead Stock (not sold in 14+ days)</h2>
             {% if dead_stock %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Last Sold</th>
-                            <th>Days Idle</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in dead_stock %}
-                        <tr>
-                            <td>{{ item.product_name | title }}</td>
-                            <td>{{ item.last_sold }}</td>
-                            <td>
-                                <span class="badge grey">
-                                    {{ item.days_since_sold }} days
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="only-mobile">
+                {% for item in dead_stock %}
+                <div class="row-card">
+                    <div class="row-card-title">{{ item.product_name | title }}</div>
+                    <div class="kv"><span class="k">Last sold</span><span class="v sans">{{ item.last_sold }}</span></div>
+                    <div class="kv"><span class="k">Days idle</span><span class="v sans"><span class="badge grey">{{ item.days_since_sold }} days</span></span></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Last Sold</th>
+                                <th>Days Idle</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in dead_stock %}
+                            <tr>
+                                <td>{{ item.product_name | title }}</td>
+                                <td>{{ item.last_sold }}</td>
+                                <td>
+                                    <span class="badge grey">
+                                        {{ item.days_since_sold }} days
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
             <p style="color:#888; font-size:14px;">No dead stock 🎉</p>
@@ -167,33 +236,51 @@
         <div class="section">
             <h2>📁 Upload History</h2>
             {% if uploads %}
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>File</th>
-                            <th>Rows Processed</th>
-                            <th>Status</th>
-                            <th>Uploaded At</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for u in uploads %}
-                        <tr>
-                            <td>{{ u.file_name }}</td>
-                            <td>{{ u.rows_processed }}</td>
-                            <td>
-                                {% if u.status == 'success' %}
-                                <span class="badge green">Success</span>
-                                {% else %}
-                                <span class="badge yellow">Partial</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="only-mobile">
+                {% for u in uploads %}
+                <div class="row-card">
+                    <div class="row-card-title">{{ u.file_name }}</div>
+                    <div class="kv"><span class="k">Rows</span><span class="v">{{ u.rows_processed }}</span></div>
+                    <div class="kv"><span class="k">Status</span><span class="v sans">
+                        {% if u.status == 'success' %}
+                        <span class="badge green">Success</span>
+                        {% else %}
+                        <span class="badge yellow">Partial</span>
+                        {% endif %}
+                    </span></div>
+                    <div class="kv"><span class="k">Uploaded</span><span class="v sans">{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</span></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="only-desktop">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Rows Processed</th>
+                                <th>Status</th>
+                                <th>Uploaded At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in uploads %}
+                            <tr>
+                                <td>{{ u.file_name }}</td>
+                                <td>{{ u.rows_processed }}</td>
+                                <td>
+                                    {% if u.status == 'success' %}
+                                    <span class="badge green">Success</span>
+                                    {% else %}
+                                    <span class="badge yellow">Partial</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
             <p style="color:#888; font-size:14px;">No uploads yet.</p>
