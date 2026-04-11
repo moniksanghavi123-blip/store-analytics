@@ -24,6 +24,14 @@ def health():
     from datetime import datetime, timezone
     return {"status": "ok", "timestamp": datetime.now(timezone.utc)}
 
+@app.get("/")
+def home():
+    return {
+        "product": "StoreIQ",
+        "status": "running",
+        "message": "WhatsApp Analytics for Local Stores"
+    }
+
 # ─────────────────────────────────────────
 # RECEIVE WHATSAPP MESSAGES FROM TWILIO
 # ─────────────────────────────────────────
