@@ -2,27 +2,32 @@ import os
 import httpx
 import tempfile
 from fastapi import FastAPI, Request, BackgroundTasks, Form
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from app.database import get_store_by_phone, run_query
 from app.processor import process_file
 from app.whatsapp import send_store_summary, send_whatsapp_message
+from app.auth import send_otp, verify_otp, is_admin, get_store_by_phone_number
+from app.analytics import (
+    get_store_summary, get_top_products,
+    get_low_stock, get_dead_stock, get_daily_trend
+)
 
 load_dotenv()
 
 app = FastAPI()
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN")
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 # ─────────────────────────────────────────
-# HEALTH CHECK
+# HOME
 # ─────────────────────────────────────────
-
-@app.get("/health")
-def health():
-    from datetime import datetime, timezone
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc)}
 
 @app.get("/")
 def home():
@@ -33,7 +38,317 @@ def home():
     }
 
 # ─────────────────────────────────────────
-# RECEIVE WHATSAPP MESSAGES FROM TWILIO
+# HEALTH CHECK
+# ─────────────────────────────────────────
+
+@app.get("/health")
+def health():
+    from datetime import datetime, timezone
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc)}
+
+# ─────────────────────────────────────────
+# AUTH — LOGIN
+# ─────────────────────────────────────────
+
+@app.get("/login")
+def login_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"error": None}
+    )
+
+@app.post("/login")
+def login_submit(request: Request, phone: str = Form(...)):
+    phone = phone.strip().replace("+", "").replace(" ", "")
+
+    store = get_store_by_phone_number(phone)
+    admin = is_admin(phone)
+
+    if not store and not admin:
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={"error": "This number is not registered. Please contact support."}
+        )
+
+    send_otp(phone)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="otp.html",
+        context={"phone": phone, "error": None}
+    )
+
+# ─────────────────────────────────────────
+# AUTH — VERIFY OTP
+# ─────────────────────────────────────────
+
+@app.post("/verify-otp")
+def verify_otp_submit(
+    request: Request,
+    phone: str = Form(...),
+    otp: str = Form(...)
+):
+    phone = phone.strip()
+    otp   = otp.strip()
+
+    if not verify_otp(phone, otp):
+        return templates.TemplateResponse(
+            request=request,
+            name="otp.html",
+            context={
+                "phone": phone,
+                "error": "Invalid or expired OTP. Please try again."
+            }
+        )
+
+    if is_admin(phone):
+        response = RedirectResponse(url="/admin", status_code=302)
+    else:
+        response = RedirectResponse(url="/dashboard", status_code=302)
+
+    response.set_cookie(
+        key="phone",
+        value=phone,
+        httponly=True,
+        max_age=86400
+    )
+    return response
+
+# ─────────────────────────────────────────
+# LOGOUT
+# ─────────────────────────────────────────
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie("phone")
+    return response
+
+# ─────────────────────────────────────────
+# STORE DASHBOARD
+# ─────────────────────────────────────────
+
+@app.get("/dashboard")
+def dashboard(request: Request):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    store = get_store_by_phone_number(phone)
+    if not store:
+        return RedirectResponse(url="/login", status_code=302)
+
+    store_id     = store['id']
+    summary      = get_store_summary(store_id, days=7)
+    top_products = get_top_products(store_id, days=7, limit=5)
+    low_stock    = get_low_stock(store_id)
+    dead_stock   = get_dead_stock(store_id)
+    daily_trend  = get_daily_trend(store_id, days=7)
+    uploads      = run_query('''
+        select * from uploads
+        where store_id = %s
+        order by uploaded_at desc
+        limit 10
+    ''', (store_id,))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "store":        store,
+            "summary":      summary,
+            "top_products": top_products,
+            "low_stock":    low_stock,
+            "dead_stock":   dead_stock,
+            "daily_trend":  daily_trend,
+            "uploads":      uploads
+        }
+    )
+
+# ─────────────────────────────────────────
+# ADMIN DASHBOARD
+# ─────────────────────────────────────────
+
+@app.get("/admin")
+def admin_dashboard(request: Request):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    stores = run_query('''
+        select
+            s.*,
+            max(u.uploaded_at)                      as last_upload,
+            current_date - max(u.uploaded_at::date) as days_inactive,
+            coalesce(sum(sr.gross_revenue), 0)       as revenue_7d
+        from stores s
+        left join uploads u on u.store_id = s.id
+        left join sales_raw sr on sr.store_id = s.id
+            and sr.sale_date >= current_date - 7
+        group by s.id
+        order by s.created_at desc
+    ''')
+
+    total_revenue = run_query('''
+        select coalesce(sum(gross_revenue), 0) as total
+        from sales_raw
+        where sale_date >= current_date - 7
+    ''')
+
+    total_uploads = run_query('''
+        select count(*) as total from uploads
+    ''')
+
+    inactive_stores = sum(
+        1 for s in stores
+        if s['days_inactive'] and s['days_inactive'] > 3
+    )
+
+    recent_uploads = run_query('''
+        select u.*, s.shop_name
+        from uploads u
+        join stores s on s.id = u.store_id
+        order by u.uploaded_at desc
+        limit 20
+    ''')
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={
+            "stores":          stores,
+            "total_revenue":   total_revenue[0]['total'] if total_revenue else 0,
+            "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
+            "inactive_stores": inactive_stores,
+            "recent_uploads":  recent_uploads,
+            "add_error":       None,
+            "add_success":     None
+        }
+    )
+
+@app.post("/admin/add-store")
+def add_store(
+    request: Request,
+    shop_name:    str = Form(...),
+    owner_name:   str = Form(...),
+    phone_number: str = Form(...),
+    store_type:   str = Form(...),
+    address:      str = Form(...),
+    plan:         str = Form(...)
+):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        run_query('''
+            insert into stores
+            (shop_name, owner_name, phone_number, address, store_type, plan)
+            values (%s, %s, %s, %s, %s, %s)
+        ''', (
+            shop_name.lower().strip(),
+            owner_name.strip(),
+            phone_number.strip(),
+            address.strip(),
+            store_type.strip(),
+            plan
+        ), fetch=False)
+        success = f"Store '{shop_name}' added successfully!"
+        error   = None
+    except Exception as e:
+        success = None
+        error   = f"Error adding store: {str(e)}"
+
+    stores = run_query('''
+        select s.*,
+            max(u.uploaded_at) as last_upload,
+            current_date - max(u.uploaded_at::date) as days_inactive,
+            coalesce(sum(sr.gross_revenue), 0) as revenue_7d
+        from stores s
+        left join uploads u on u.store_id = s.id
+        left join sales_raw sr on sr.store_id = s.id
+            and sr.sale_date >= current_date - 7
+        group by s.id
+        order by s.created_at desc
+    ''')
+
+    total_revenue = run_query('''
+        select coalesce(sum(gross_revenue), 0) as total
+        from sales_raw where sale_date >= current_date - 7
+    ''')
+
+    total_uploads = run_query('''
+        select count(*) as total from uploads
+    ''')
+
+    inactive_stores = sum(
+        1 for s in stores
+        if s['days_inactive'] and s['days_inactive'] > 3
+    )
+
+    recent_uploads = run_query('''
+        select u.*, s.shop_name
+        from uploads u
+        join stores s on s.id = u.store_id
+        order by u.uploaded_at desc
+        limit 20
+    ''')
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={
+            "stores":          stores,
+            "total_revenue":   total_revenue[0]['total'] if total_revenue else 0,
+            "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
+            "inactive_stores": inactive_stores,
+            "recent_uploads":  recent_uploads,
+            "add_error":       error,
+            "add_success":     success
+        }
+    )
+
+@app.get("/admin/store/{store_id}")
+def admin_store_detail(request: Request, store_id: int):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    store = run_query("select * from stores where id = %s", (store_id,))
+    if not store:
+        return RedirectResponse(url="/admin", status_code=302)
+
+    store        = store[0]
+    summary      = get_store_summary(store_id, days=7)
+    top_products = get_top_products(store_id, days=7, limit=5)
+    low_stock    = get_low_stock(store_id)
+    dead_stock   = get_dead_stock(store_id)
+    daily_trend  = get_daily_trend(store_id, days=7)
+    uploads      = run_query('''
+        select * from uploads
+        where store_id = %s
+        order by uploaded_at desc
+        limit 10
+    ''', (store_id,))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "store":        store,
+            "summary":      summary,
+            "top_products": top_products,
+            "low_stock":    low_stock,
+            "dead_stock":   dead_stock,
+            "daily_trend":  daily_trend,
+            "uploads":      uploads
+        }
+    )
+
+# ─────────────────────────────────────────
+# WHATSAPP WEBHOOK
 # ─────────────────────────────────────────
 
 @app.post("/webhook")
@@ -46,13 +361,11 @@ async def receive_message(
     MediaContentType0: str = Form(None),
     NumMedia: str = Form(None)
 ):
-    # Extract phone number — Twilio sends "whatsapp:+919876543210"
     phone = From.replace("whatsapp:+", "") if From else None
 
     if not phone:
         return PlainTextResponse("ok")
 
-    # Look up store by phone number
     store = get_store_by_phone(phone)
     if not store:
         send_whatsapp_message(phone,
@@ -60,48 +373,38 @@ async def receive_message(
             "Please contact support.")
         return PlainTextResponse("ok")
 
-    # Handle file/document message
     if NumMedia and int(NumMedia) > 0 and MediaUrl0:
         background_tasks.add_task(
             handle_file_upload,
-            MediaUrl0,
-            MediaContentType0,
-            store
+            MediaUrl0, MediaContentType0, store
         )
         send_whatsapp_message(phone,
             "✅ File received! Processing your data now. "
             "You'll get your summary shortly.")
 
-    # Handle text message
     elif Body:
         text = Body.lower().strip()
         if text in ['summary', 'report', 'stats']:
             background_tasks.add_task(
                 send_store_summary,
-                store['id'],
-                store['shop_name'],
-                phone
+                store['id'], store['shop_name'], phone
             )
         else:
-            # Send any other question to AI
             background_tasks.add_task(
-                handle_ai_question,
-                Body,
-                store
+                handle_ai_question, Body, store
             )
 
     return PlainTextResponse("ok")
 
 # ─────────────────────────────────────────
-# HANDLE FILE UPLOAD IN BACKGROUND
+# FILE UPLOAD HANDLER
 # ─────────────────────────────────────────
 
 async def handle_file_upload(media_url, content_type, store):
-    phone = store['phone_number']
+    phone    = store['phone_number']
     store_id = store['id']
 
     try:
-        # Step 1 — Download file from Twilio with basic auth
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 media_url,
@@ -110,51 +413,37 @@ async def handle_file_upload(media_url, content_type, store):
                 headers={"Accept": "*/*"}
             )
 
-        print(f"Download status: {response.status_code}")
-        print(f"Content type: {response.headers.get('content-type')}")
-        print(f"Content length: {len(response.content)} bytes")
-
-        # Step 2 — Determine file extension
         ext_map = {
             'application/vnd.openxmlformats-officedocument'
             '.spreadsheetml.sheet': '.xlsx',
             'application/vnd.ms-excel': '.xls',
-            'text/csv': '.csv',
+            'text/csv':   '.csv',
             'text/plain': '.csv'
         }
         suffix = ext_map.get(content_type, '.xlsx')
 
-        # Step 3 — Save to temp file
         with tempfile.NamedTemporaryFile(
             delete=False, suffix=suffix
         ) as tmp:
             tmp.write(response.content)
             tmp_path = tmp.name
 
-        print(f"Saved to: {tmp_path}")
-
-        # Step 4 — Process the file
         result = process_file(tmp_path, store_id)
 
-        # Step 5 — Log the upload
         run_query('''
             insert into uploads
             (store_id, file_name, rows_processed, rows_failed, status)
             values (%s, %s, %s, %s, %s)
         ''', (
-            store_id,
-            f"upload{suffix}",
+            store_id, f"upload{suffix}",
             result['rows_processed'],
             result['rows_failed'],
             result['status']
         ), fetch=False)
 
-        # Step 6 — Send confirmation + summary
         send_whatsapp_message(phone,
             f"✅ Processed *{result['rows_processed']}* rows successfully!")
         send_store_summary(store_id, store['shop_name'], phone)
-
-        # Step 7 — Cleanup
         os.unlink(tmp_path)
 
     except Exception as e:
@@ -166,11 +455,10 @@ async def handle_file_upload(media_url, content_type, store):
             "purchase_price, sale_date")
 
 # ─────────────────────────────────────────
-# HANDLE AI QUESTION IN BACKGROUND
+# AI Q&A HANDLER
 # ─────────────────────────────────────────
 
 async def handle_ai_question(question, store):
-    """Send question to AI and reply on WhatsApp"""
     try:
         from app.ai import ask_ai
         answer = ask_ai(

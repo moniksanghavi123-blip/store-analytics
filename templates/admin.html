@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StoreIQ — Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h1>⚡ StoreIQ Admin</h1>
+                <span>All stores overview</span>
+            </div>
+            <a href="/logout" class="logout">Logout</a>
+        </div>
+
+        <!-- PLATFORM STATS -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">🏪 Total Stores</div>
+                <div class="value blue">{{ stores | length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">💰 Platform Revenue</div>
+                <div class="value green">₹{{ total_revenue or 0 }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">⚠️ Inactive Stores</div>
+                <div class="value red">{{ inactive_stores }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">📁 Total Uploads</div>
+                <div class="value">{{ total_uploads or 0 }}</div>
+            </div>
+        </div>
+
+        <!-- ALL STORES TABLE -->
+        <div class="section">
+            <h2>🏪 All Stores</h2>
+            {% if stores %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>Owner</th>
+                        <th>Plan</th>
+                        <th>Last Upload</th>
+                        <th>Status</th>
+                        <th>Revenue (7d)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for store in stores %}
+                    <tr>
+                        <td><strong>{{ store.shop_name.replace('_',' ') | title }}</strong></td>
+                        <td>{{ store.owner_name }}</td>
+                        <td>
+                            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+                                {{ store.plan | title }}
+                            </span>
+                        </td>
+                        <td>{{ store.last_upload or 'Never' }}</td>
+                        <td>
+                            {% if store.days_inactive is none %}
+                            <span class="badge grey">No Data</span>
+                            {% elif store.days_inactive > 3 %}
+                            <span class="badge red">Inactive</span>
+                            {% else %}
+                            <span class="badge green">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>₹{{ store.revenue_7d or 0 }}</td>
+                        <td>
+                            <a href="/admin/store/{{ store.id }}"
+                               style="color:#1976d2; font-size:13px;">
+                                View →
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No stores yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- RECENT UPLOADS -->
+        <div class="section">
+            <h2>📁 Recent Uploads — All Stores</h2>
+            {% if recent_uploads %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>File</th>
+                        <th>Rows</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in recent_uploads %}
+                    <tr>
+                        <td>{{ u.shop_name.replace('_',' ') | title }}</td>
+                        <td>{{ u.file_name }}</td>
+                        <td>{{ u.rows_processed }}</td>
+                        <td>
+                            {% if u.status == 'success' %}
+                            <span class="badge green">Success</span>
+                            {% else %}
+                            <span class="badge yellow">Partial</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ u.uploaded_at.strftime('%d %b %I:%M %p') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No uploads yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- ADD NEW STORE -->
+        <div class="section">
+            <h2>➕ Add New Store</h2>
+            {% if add_error %}
+            <div class="error">{{ add_error }}</div>
+            {% endif %}
+            {% if add_success %}
+            <div class="info">{{ add_success }}</div>
+            {% endif %}
+            <form method="POST" action="/admin/add-store">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label>Shop Name</label>
+                        <input type="text" name="shop_name"
+                               placeholder="sharma_general" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Owner Name</label>
+                        <input type="text" name="owner_name"
+                               placeholder="Raj Sharma" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <input type="text" name="phone_number"
+                               placeholder="919876543210" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Store Type</label>
+                        <input type="text" name="store_type"
+                               placeholder="kirana" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input type="text" name="address"
+                               placeholder="Malad West, Mumbai" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Plan</label>
+                        <select name="plan" style="width:100%; padding:12px 16px;
+                                border:1.5px solid #e0e0e0; border-radius:10px;
+                                font-size:16px; outline:none;">
+                            <option value="starter">Starter</option>
+                            <option value="growth">Growth</option>
+                            <option value="pro">Pro</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn" style="margin-top:8px;">
+                    Add Store ➕
+                </button>
+            </form>
+        </div>
+
+    </div>
+</body>
+</html>

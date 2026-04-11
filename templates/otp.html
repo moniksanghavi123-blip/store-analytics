@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StoreIQ — Enter OTP</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-box">
+            <div class="auth-logo">
+                <h1>🏪 StoreIQ</h1>
+                <p>Analytics for your store</p>
+            </div>
+
+            {% if error %}
+            <div class="error">{{ error }}</div>
+            {% endif %}
+
+            <div class="info">
+                ✅ OTP sent to <strong>+{{ phone }}</strong> on WhatsApp
+            </div>
+
+            <h2>Enter OTP</h2>
+            <p class="subtitle">Check your WhatsApp for the 6-digit code</p>
+
+            <form method="POST" action="/verify-otp">
+                <input type="hidden" name="phone" value="{{ phone }}" />
+                <div class="form-group">
+                    <label>6-digit OTP</label>
+                    <input
+                        type="text"
+                        name="otp"
+                        placeholder="123456"
+                        maxlength="6"
+                        required
+                        autofocus
+                        style="letter-spacing: 8px; font-size: 24px; text-align: center;"
+                    />
+                </div>
+                <button type="submit" class="btn">
+                    Verify & Login ✅
+                </button>
+            </form>
+
+            <p style="text-align:center; margin-top:16px; font-size:13px; color:#888;">
+                Didn't get it? 
+                <a href="/login" style="color:#25D366;">Send again</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

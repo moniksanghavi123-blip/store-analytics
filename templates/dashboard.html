@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StoreIQ — {{ store.shop_name | title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <a href="/admin" style="font-size:13px; color:#1976d2; 
+                   display:inline-block; margin-bottom:8px;">
+                    ← Back to Admin
+                </a>
+                <h1>🏪 {{ store.shop_name.replace('_', ' ') | title }}</h1>
+                <span>Last 7 days performance</span>
+            </div>
+            <a href="/logout" class="logout">Logout</a>
+        </div>
+
+        <!-- STAT CARDS -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">💰 Total Revenue</div>
+                <div class="value green">₹{{ summary.total_revenue or 0 }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">📈 Total Profit</div>
+                <div class="value green">₹{{ summary.total_profit or 0 }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">📊 Margin</div>
+                <div class="value blue">{{ summary.margin_pct or 0 }}%</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">📦 Units Sold</div>
+                <div class="value">{{ summary.total_units or 0 }}</div>
+            </div>
+        </div>
+
+        <!-- TOP PRODUCTS -->
+        <div class="section">
+            <h2>🔥 Top Products — Last 7 Days</h2>
+            {% if top_products %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Category</th>
+                        <th>Units Sold</th>
+                        <th>Revenue</th>
+                        <th>Profit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in top_products %}
+                    <tr>
+                        <td>{{ p.product_name | title }}</td>
+                        <td>{{ p.category | title if p.category else '—' }}</td>
+                        <td>{{ p.total_units | int }}</td>
+                        <td>₹{{ p.total_revenue }}</td>
+                        <td>₹{{ p.total_profit }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No sales data yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- DAILY TREND -->
+        <div class="section">
+            <h2>📅 Daily Sales — Last 7 Days</h2>
+            {% if daily_trend %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Revenue</th>
+                        <th>Profit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in daily_trend %}
+                    <tr>
+                        <td>{{ d.sale_date }}</td>
+                        <td>₹{{ d.revenue }}</td>
+                        <td>₹{{ d.profit }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No data yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- INVENTORY ALERTS -->
+        <div class="section">
+            <h2>⚠️ Inventory Alerts</h2>
+            {% if low_stock %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Stock Left</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in low_stock %}
+                    {% if item.closing_stock is not none and item.closing_stock < 10 %}
+                    <tr>
+                        <td>{{ item.product_name | title }}</td>
+                        <td>{{ item.closing_stock | int }}</td>
+                        <td>
+                            {% if item.closing_stock == 0 %}
+                            <span class="badge red">Out of Stock</span>
+                            {% elif item.closing_stock < 5 %}
+                            <span class="badge red">Critical Low</span>
+                            {% else %}
+                            <span class="badge yellow">Low Stock</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">All stocks are healthy ✅</p>
+            {% endif %}
+        </div>
+
+        <!-- DEAD STOCK -->
+        <div class="section">
+            <h2>😴 Dead Stock (not sold in 14+ days)</h2>
+            {% if dead_stock %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Last Sold</th>
+                        <th>Days Idle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in dead_stock %}
+                    <tr>
+                        <td>{{ item.product_name | title }}</td>
+                        <td>{{ item.last_sold }}</td>
+                        <td>
+                            <span class="badge grey">
+                                {{ item.days_since_sold }} days
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No dead stock 🎉</p>
+            {% endif %}
+        </div>
+
+        <!-- UPLOAD HISTORY -->
+        <div class="section">
+            <h2>📁 Upload History</h2>
+            {% if uploads %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Rows Processed</th>
+                        <th>Status</th>
+                        <th>Uploaded At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in uploads %}
+                    <tr>
+                        <td>{{ u.file_name }}</td>
+                        <td>{{ u.rows_processed }}</td>
+                        <td>
+                            {% if u.status == 'success' %}
+                            <span class="badge green">Success</span>
+                            {% else %}
+                            <span class="badge yellow">Partial</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:#888; font-size:14px;">No uploads yet.</p>
+            {% endif %}
+        </div>
+
+    </div>
+</body>
+</html>
