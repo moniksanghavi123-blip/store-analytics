@@ -38,55 +38,37 @@
             </div>
         </div>
 
-        <!-- ALL STORES TABLE -->
+        <!-- ALL STORES -->
         <div class="section">
             <h2>🏪 All Stores</h2>
             {% if stores %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Store</th>
-                        <th>Owner</th>
-                        <th>Plan</th>
-                        <th>Last Upload</th>
-                        <th>Status</th>
-                        <th>Revenue (7d)</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for store in stores %}
-                    <tr>
-                        <td><strong>{{ store.shop_name.replace('_',' ') | title }}</strong></td>
-                        <td>{{ store.owner_name }}</td>
-                        <td>
-                            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
-                                {{ store.plan | title }}
-                            </span>
-                        </td>
-                        <td>{{ store.last_upload or 'Never' }}</td>
-                        <td>
-                            {% if store.days_inactive is none %}
-                            <span class="badge grey">No Data</span>
-                            {% elif store.days_inactive > 3 %}
-                            <span class="badge red">Inactive</span>
-                            {% else %}
-                            <span class="badge green">Active</span>
-                            {% endif %}
-                        </td>
-                        <td>₹{{ store.revenue_7d or 0 }}</td>
-                        <td>
-                            <a href="/admin/store/{{ store.id }}"
-                               style="color:#1976d2; font-size:13px;">
-                                View →
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            {% for store in stores %}
+            <div class="store-row">
+                <div class="info">
+                    <div class="name">{{ store.shop_name.replace('_',' ') | title }}</div>
+                    <div class="meta">
+                        {{ store.owner_name }} &bull;
+                        <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+                            {{ store.plan | title }}
+                        </span>
+                        &bull;
+                        {% if store.days_inactive is none %}
+                        <span class="badge grey">No Data</span>
+                        {% elif store.days_inactive > 3 %}
+                        <span class="badge red">Inactive</span>
+                        {% else %}
+                        <span class="badge green">Active</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="right">
+                    <div class="revenue">₹{{ store.revenue_7d or 0 }}</div>
+                    <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
+                </div>
+            </div>
+            {% endfor %}
             {% else %}
-            <p style="color:#888; font-size:14px;">No stores yet.</p>
+            <p class="empty">No stores yet.</p>
             {% endif %}
         </div>
 
@@ -137,7 +119,7 @@
             <div class="info">{{ add_success }}</div>
             {% endif %}
             <form method="POST" action="/admin/add-store">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-grid">
                     <div class="form-group">
                         <label>Shop Name</label>
                         <input type="text" name="shop_name"
