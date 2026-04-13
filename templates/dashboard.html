@@ -42,19 +42,69 @@
 
         <div class="section">
             <h2>🧾 Current Plan</h2>
-            <p style="color:#666; font-size:14px;">
+            <p style="color:#666; font-size:14px; margin-bottom:12px;">
                 Your store is on <strong>{{ plan_features.label }}</strong>.
-                {% if plan_features.charts %}
-                Charts are enabled.
-                {% else %}
-                Upgrade to Growth or Pro to unlock charts.
-                {% endif %}
-                {% if plan_features.ai_assistant %}
-                AI assistant is enabled.
-                {% else %}
-                AI assistant is available on Pro.
-                {% endif %}
+                {% if plan_features.charts %}Charts are enabled.{% else %}Upgrade to Growth or Pro to unlock charts.{% endif %}
+                {% if plan_features.ai_assistant %}AI assistant is enabled.{% else %}AI assistant is available on Pro.{% endif %}
             </p>
+        
+            <!-- Plan feature matrix -->
+            <div style="overflow-x:auto; margin-bottom:14px;">
+                <table style="min-width:0; font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th style="text-align:center;">Starter</th>
+                            <th style="text-align:center;">Growth</th>
+                            <th style="text-align:center;">Pro</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Dashboard & Analytics</td>
+                            <td style="text-align:center;">✅</td>
+                            <td style="text-align:center;">✅</td>
+                            <td style="text-align:center;">✅</td>
+                        </tr>
+                        <tr>
+                            <td>Charts & Graphs</td>
+                            <td style="text-align:center;">❌</td>
+                            <td style="text-align:center;">✅</td>
+                            <td style="text-align:center;">✅</td>
+                        </tr>
+                        <tr>
+                            <td>CSV Column Mapping</td>
+                            <td style="text-align:center;">❌</td>
+                            <td style="text-align:center;">✅</td>
+                            <td style="text-align:center;">✅</td>
+                        </tr>
+                        <tr>
+                            <td>AI WhatsApp Assistant</td>
+                            <td style="text-align:center;">❌</td>
+                            <td style="text-align:center;">❌</td>
+                            <td style="text-align:center;">✅</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        
+            <!-- Admin-only: plan upgrade -->
+            {% if is_admin_view %}
+            <form method="POST" action="/admin/store/{{ store.id }}/change-plan"
+                  style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <select name="plan" style="padding:10px 14px; border:1.5px solid var(--border);
+                        border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif;
+                        background:#fafafa; outline:none; min-width:140px;">
+                    <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
+                    <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
+                    <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
+                </select>
+                <button type="submit" class="btn"
+                        style="width:auto; padding:10px 20px; font-size:14px;">
+                    Change Plan ⚡
+                </button>
+            </form>
+            {% endif %}
         </div>
 
         <div class="section">
@@ -344,8 +394,10 @@
 
         <p style="color:#666; font-size:14px; margin-bottom:16px;">
             Upload your Excel or CSV file. Make sure it has these columns:<br>
+            <!-- NEW -->
             <code style="background:#f5f5f5; padding:4px 8px; border-radius:4px; font-size:13px;">
-                product_name, quantity_sold, selling_price, purchase_price, sale_date
+                <strong>Required:</strong> product_name, quantity_sold, selling_price, purchase_price, sale_date<br>
+                <strong>Optional:</strong> category, opening_stock, closing_stock
             </code>
         </p>
         <p style="margin:0 0 12px;">
@@ -363,10 +415,20 @@
                 <div class="form-group">
                     <label>Map To</label>
                     <select name="target_column" required>
-                        {% for col in target_columns %}
-                        <option value="{{ col }}">{{ col }}</option>
-                        {% endfor %}
+                        <optgroup label="Required">
+                            {% for col in target_columns[:5] %}
+                            <option value="{{ col }}">{{ col }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Optional">
+                            {% for col in target_columns[5:] %}
+                            <option value="{{ col }}">{{ col }}</option>
+                            {% endfor %}
+                        </optgroup>
                     </select>
+                    <p style="font-size:11px; color:var(--muted); margin-top:4px;">
+                        e.g. if your CSV has "qty_sold" → map it to "quantity_sold"
+                    </p>
                 </div>
                 <button type="submit" class="btn" style="max-width:220px;">Save Mapping</button>
             </form>
