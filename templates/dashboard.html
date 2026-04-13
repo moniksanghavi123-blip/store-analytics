@@ -306,6 +306,16 @@
                 product_name, quantity_sold, selling_price, purchase_price, sale_date
             </code>
         </p>
+        <p style="margin:0 0 12px;">
+            <a href="/demo/sample-file" class="back-link">Download sample file</a>
+        </p>
+        {% if is_admin_view %}
+        <form method="POST" action="/admin/store/{{ store.id }}/load-demo-data" style="margin:0 0 12px;">
+            <button type="submit" class="btn" style="max-width:240px;">
+                Load Demo Data (7 days)
+            </button>
+        </form>
+        {% endif %}
 
         <form action="/upload-file?store_id={{ store.id }}" method="POST" enctype="multipart/form-data">
             <div class="form-group">
