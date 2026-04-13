@@ -511,6 +511,77 @@ tr:last-child td { border-bottom: none; }
 
 .file-input:focus { border-color: var(--green); outline: none; }
 
+/* ─── ADMIN DELETE / RESTORE ─── */
+
+.delete-form {
+    margin-top: 6px;
+}
+
+.delete-input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 11px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.delete-input.desktop {
+    width: 180px;
+}
+
+.delete-btn {
+    margin-top: 4px;
+    width: 100%;
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ffcdd2;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.delete-btn.inline {
+    width: auto;
+    padding: 6px 10px;
+}
+
+.restore-btn {
+    border: none;
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ─── CHARTS ─── */
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.chart-card {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.chart-card h3 {
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.chart-wrap {
+    position: relative;
+    height: 240px;
+}
+
 /* ─── EMPTY STATE ─── */
 
 .empty {
@@ -527,4 +598,5 @@ tr:last-child td { border-bottom: none; }
     .stats-grid { grid-template-columns: repeat(4, 1fr); }
     .form-grid { grid-template-columns: 1fr 1fr; }
     .dashboard-header h1 { font-size: 24px; }
+    .chart-grid { grid-template-columns: 2fr 1fr; }
 }

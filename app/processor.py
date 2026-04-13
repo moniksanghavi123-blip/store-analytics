@@ -43,9 +43,17 @@ def read_file(file_path):
         raise ValueError(f"Unsupported file type: {ext}")
     return df
 
-def normalize_columns(df):
+def normalize_columns(df, column_mapping=None):
     """Lowercase and strip all column names"""
     df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
+    if column_mapping:
+        normalized_map = {
+            str(k).lower().strip().replace(' ', '_'):
+            str(v).lower().strip().replace(' ', '_')
+            for k, v in column_mapping.items()
+            if k and v
+        }
+        df = df.rename(columns=normalized_map)
     df = df.rename(columns={
         col: COLUMN_ALIASES.get(col, col)
         for col in df.columns
@@ -145,7 +153,7 @@ def save_to_db(df, store_id):
 
     return success_count, fail_count
 
-def process_file(file_path, store_id):
+def process_file(file_path, store_id, column_mapping=None):
     """Main function — read, clean, save one file"""
     print(f"Processing file: {file_path}")
 
@@ -153,7 +161,7 @@ def process_file(file_path, store_id):
     if df.empty:
         raise ValueError("Uploaded file is empty. Please add data rows and try again.")
 
-    df = normalize_columns(df)
+    df = normalize_columns(df, column_mapping=column_mapping)
     
     # DEBUG — print actual columns received
     print(f"Columns found: {list(df.columns)}")

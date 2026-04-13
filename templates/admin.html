@@ -18,6 +18,13 @@
             <a href="/logout" class="logout">Logout</a>
         </div>
 
+        {% if request.query_params.get('success') %}
+        <div class="info">✅ {{ request.query_params.get('success') }}</div>
+        {% endif %}
+        {% if request.query_params.get('error') %}
+        <div class="error">❌ {{ request.query_params.get('error') }}</div>
+        {% endif %}
+
         <!-- PLATFORM STATS -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -65,6 +72,16 @@
                     <div class="right">
                         <div class="revenue">₹{{ store.revenue_7d or 0 }}</div>
                         <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
+                        <form method="POST" action="/admin/store/{{ store.id }}/delete"
+                              class="delete-form">
+                            <input type="text" name="confirm_text"
+                                   placeholder="DELETE {{ store.shop_name }}"
+                                   required
+                                   class="delete-input" />
+                            <button type="submit" class="delete-btn">
+                                Delete
+                            </button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
@@ -102,7 +119,18 @@
                                     {% endif %}
                                 </td>
                                 <td>₹{{ store.revenue_7d or 0 }}</td>
-                                <td><a href="/admin/store/{{ store.id }}" class="view-link">View →</a></td>
+                                <td>
+                                    <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
+                                    <form method="POST" action="/admin/store/{{ store.id }}/delete" class="delete-form">
+                                        <input type="text" name="confirm_text"
+                                               placeholder="DELETE {{ store.shop_name }}"
+                                               required
+                                               class="delete-input desktop" />
+                                        <button type="submit" class="delete-btn inline">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -169,6 +197,30 @@
             </div>
             {% else %}
             <p style="color:#888; font-size:14px;">No uploads yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>🗑️ Recently Deleted Stores</h2>
+            {% if deleted_stores %}
+            <div class="data-list">
+                {% for ds in deleted_stores %}
+                <div class="data-card">
+                    <div>
+                        <div class="name">{{ ds.shop_name.replace('_',' ') | title }}</div>
+                        <div class="sub">
+                            {{ ds.owner_name }} ·
+                            deleted {{ ds.deleted_at.strftime('%d %b %I:%M %p') if ds.deleted_at else 'recently' }}
+                        </div>
+                    </div>
+                    <form method="POST" action="/admin/store/{{ ds.id }}/restore">
+                        <button type="submit" class="restore-btn">Restore</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty">No deleted stores.</p>
             {% endif %}
         </div>
 

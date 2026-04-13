@@ -7,12 +7,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from app.database import get_store_by_phone, run_query
-from app.processor import process_file
+from app.processor import process_file, REQUIRED_COLUMNS, OPTIONAL_COLUMNS
 from app.whatsapp import send_store_summary, send_whatsapp_message
 from app.auth import send_otp, verify_otp, is_admin, get_store_by_phone_number
 from app.analytics import (
     get_store_summary, get_top_products,
-    get_low_stock, get_dead_stock, get_daily_trend
+    get_low_stock, get_dead_stock, get_daily_trend, get_category_breakdown
 )
 from datetime import date, timedelta
 
@@ -24,6 +24,85 @@ WA_TOKEN     = os.getenv("WA_TOKEN")
 WA_PHONE_ID  = os.getenv("WA_PHONE_ID")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 ALLOWED_UPLOAD_EXTENSIONS = {".xlsx", ".xls", ".csv"}
+TARGET_COLUMNS = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
+PLAN_FEATURES = {
+    "starter": {
+        "label": "Starter",
+        "charts": False,
+        "ai_assistant": False,
+        "csv_mapping": False,
+    },
+    "growth": {
+        "label": "Growth",
+        "charts": True,
+        "ai_assistant": False,
+        "csv_mapping": True,
+    },
+    "pro": {
+        "label": "Pro",
+        "charts": True,
+        "ai_assistant": True,
+        "csv_mapping": True,
+    },
+}
+
+
+def ensure_store_soft_delete_support():
+    """Add soft-delete columns when missing (safe, idempotent)."""
+    run_query(
+        '''
+        alter table stores
+        add column if not exists is_active boolean default true
+        ''',
+        fetch=False
+    )
+    run_query(
+        '''
+        alter table stores
+        add column if not exists deleted_at timestamp
+        ''',
+        fetch=False
+    )
+    run_query(
+        '''
+        alter table stores
+        add column if not exists deleted_by text
+        ''',
+        fetch=False
+    )
+
+
+def ensure_column_mapping_support():
+    run_query(
+        '''
+        create table if not exists store_column_mappings (
+            id serial primary key,
+            store_id integer not null references stores(id) on delete cascade,
+            source_column text not null,
+            target_column text not null,
+            created_at timestamp default now(),
+            unique(store_id, source_column)
+        )
+        ''',
+        fetch=False
+    )
+
+
+def get_plan_features(plan_name):
+    return PLAN_FEATURES.get((plan_name or "starter").lower(), PLAN_FEATURES["starter"])
+
+
+def get_store_column_mapping(store_id):
+    ensure_column_mapping_support()
+    rows = run_query(
+        '''
+        select source_column, target_column
+        from store_column_mappings
+        where store_id = %s
+        ''',
+        (store_id,)
+    )
+    return {r["source_column"]: r["target_column"] for r in rows}
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -155,11 +234,23 @@ def dashboard(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     store_id     = store['id']
+    plan_features = get_plan_features(store.get("plan"))
     summary      = get_store_summary(store_id, days=7)
     top_products = get_top_products(store_id, days=7, limit=5)
     low_stock    = get_low_stock(store_id)
     dead_stock   = get_dead_stock(store_id)
     daily_trend  = get_daily_trend(store_id, days=7)
+    category_breakdown = get_category_breakdown(store_id, days=7)
+    trend_labels = [str(d["sale_date"]) for d in daily_trend]
+    trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
+    trend_profit = [float(d["profit"] or 0) for d in daily_trend]
+    category_labels = [str(c["category"] or "Uncategorized") for c in category_breakdown]
+    category_revenue = [float(c["revenue"] or 0) for c in category_breakdown]
+    column_mapping = get_store_column_mapping(store_id)
+    mapping_rows = [
+        {"source_column": k, "target_column": v}
+        for k, v in column_mapping.items()
+    ]
     uploads      = run_query('''
         select * from uploads
         where store_id = %s
@@ -177,6 +268,15 @@ def dashboard(request: Request):
             "low_stock":    low_stock,
             "dead_stock":   dead_stock,
             "daily_trend":  daily_trend,
+            "category_breakdown": category_breakdown,
+            "trend_labels": trend_labels,
+            "trend_revenue": trend_revenue,
+            "trend_profit": trend_profit,
+            "category_labels": category_labels,
+            "category_revenue": category_revenue,
+            "plan_features": plan_features,
+            "mapping_rows": mapping_rows,
+            "target_columns": TARGET_COLUMNS,
             "uploads":      uploads,
             "today":        date.today().isoformat(),
             "is_admin_view": False
@@ -193,6 +293,8 @@ def admin_dashboard(request: Request):
     if not phone or not is_admin(phone):
         return RedirectResponse(url="/login", status_code=302)
 
+    ensure_store_soft_delete_support()
+
     stores = run_query('''
         select
             s.*,
@@ -203,6 +305,7 @@ def admin_dashboard(request: Request):
         left join uploads u on u.store_id = s.id
         left join sales_raw sr on sr.store_id = s.id
             and sr.sale_date >= current_date - 7
+        where coalesce(s.is_active, true) = true
         group by s.id
         order by s.created_at desc
     ''')
@@ -226,9 +329,19 @@ def admin_dashboard(request: Request):
         select u.*, s.shop_name
         from uploads u
         join stores s on s.id = u.store_id
+        where coalesce(s.is_active, true) = true
         order by u.uploaded_at desc
         limit 20
     ''')
+    deleted_stores = run_query(
+        '''
+        select id, shop_name, owner_name, deleted_at, deleted_by
+        from stores
+        where coalesce(is_active, true) = false
+        order by deleted_at desc nulls last
+        limit 20
+        '''
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -239,6 +352,7 @@ def admin_dashboard(request: Request):
             "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
             "inactive_stores": inactive_stores,
             "recent_uploads":  recent_uploads,
+            "deleted_stores":  deleted_stores,
             "add_error":       None,
             "add_success":     None
         }
@@ -257,6 +371,8 @@ def add_store(
     phone = request.cookies.get("phone")
     if not phone or not is_admin(phone):
         return RedirectResponse(url="/login", status_code=302)
+
+    ensure_store_soft_delete_support()
 
     try:
         run_query('''
@@ -286,6 +402,7 @@ def add_store(
         left join uploads u on u.store_id = s.id
         left join sales_raw sr on sr.store_id = s.id
             and sr.sale_date >= current_date - 7
+        where coalesce(s.is_active, true) = true
         group by s.id
         order by s.created_at desc
     ''')
@@ -308,9 +425,19 @@ def add_store(
         select u.*, s.shop_name
         from uploads u
         join stores s on s.id = u.store_id
+        where coalesce(s.is_active, true) = true
         order by u.uploaded_at desc
         limit 20
     ''')
+    deleted_stores = run_query(
+        '''
+        select id, shop_name, owner_name, deleted_at, deleted_by
+        from stores
+        where coalesce(is_active, true) = false
+        order by deleted_at desc nulls last
+        limit 20
+        '''
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -321,6 +448,7 @@ def add_store(
             "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
             "inactive_stores": inactive_stores,
             "recent_uploads":  recent_uploads,
+            "deleted_stores":  deleted_stores,
             "add_error":       error,
             "add_success":     success
         }
@@ -332,16 +460,36 @@ def admin_store_detail(request: Request, store_id: int):
     if not phone or not is_admin(phone):
         return RedirectResponse(url="/login", status_code=302)
 
-    store = run_query("select * from stores where id = %s", (store_id,))
+    ensure_store_soft_delete_support()
+    store = run_query(
+        '''
+        select * from stores
+        where id = %s
+          and coalesce(is_active, true) = true
+        ''',
+        (store_id,)
+    )
     if not store:
         return RedirectResponse(url="/admin", status_code=302)
 
     store        = store[0]
+    plan_features = get_plan_features(store.get("plan"))
     summary      = get_store_summary(store_id, days=7)
     top_products = get_top_products(store_id, days=7, limit=5)
     low_stock    = get_low_stock(store_id)
     dead_stock   = get_dead_stock(store_id)
     daily_trend  = get_daily_trend(store_id, days=7)
+    category_breakdown = get_category_breakdown(store_id, days=7)
+    trend_labels = [str(d["sale_date"]) for d in daily_trend]
+    trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
+    trend_profit = [float(d["profit"] or 0) for d in daily_trend]
+    category_labels = [str(c["category"] or "Uncategorized") for c in category_breakdown]
+    category_revenue = [float(c["revenue"] or 0) for c in category_breakdown]
+    column_mapping = get_store_column_mapping(store_id)
+    mapping_rows = [
+        {"source_column": k, "target_column": v}
+        for k, v in column_mapping.items()
+    ]
     uploads      = run_query('''
         select * from uploads
         where store_id = %s
@@ -359,10 +507,93 @@ def admin_store_detail(request: Request, store_id: int):
             "low_stock":    low_stock,
             "dead_stock":   dead_stock,
             "daily_trend":  daily_trend,
+            "category_breakdown": category_breakdown,
+            "trend_labels": trend_labels,
+            "trend_revenue": trend_revenue,
+            "trend_profit": trend_profit,
+            "category_labels": category_labels,
+            "category_revenue": category_revenue,
+            "plan_features": plan_features,
+            "mapping_rows": mapping_rows,
+            "target_columns": TARGET_COLUMNS,
             "uploads":      uploads,
             "today":        date.today().isoformat(),
             "is_admin_view": True
         }
+    )
+
+
+@app.post("/admin/store/{store_id}/delete")
+def delete_store(request: Request, store_id: int, confirm_text: str = Form(...)):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    ensure_store_soft_delete_support()
+
+    store_rows = run_query(
+        '''
+        select id, shop_name from stores
+        where id = %s
+          and coalesce(is_active, true) = true
+        ''',
+        (store_id,)
+    )
+    if not store_rows:
+        return RedirectResponse(
+            url="/admin?error=Store+not+found+or+already+deleted",
+            status_code=302
+        )
+
+    store = store_rows[0]
+    expected = f"DELETE {store['shop_name']}"
+    if confirm_text.strip() != expected:
+        return RedirectResponse(
+            url=(
+                "/admin?error=Delete+confirmation+mismatch.+"
+                f"Type+{expected.replace(' ', '+')}+to+delete."
+            ),
+            status_code=302
+        )
+
+    run_query(
+        '''
+        update stores
+        set is_active = false,
+            deleted_at = now(),
+            deleted_by = %s
+        where id = %s
+        ''',
+        (phone, store_id),
+        fetch=False
+    )
+    return RedirectResponse(
+        url="/admin?success=Store+deleted+successfully",
+        status_code=302
+    )
+
+
+@app.post("/admin/store/{store_id}/restore")
+def restore_store(request: Request, store_id: int):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    ensure_store_soft_delete_support()
+    run_query(
+        '''
+        update stores
+        set is_active = true,
+            deleted_at = null,
+            deleted_by = null
+        where id = %s
+        ''',
+        (store_id,),
+        fetch=False
+    )
+    return RedirectResponse(
+        url="/admin?success=Store+restored+successfully",
+        status_code=302
     )
 
 def load_demo_sales_data(store_id: int):
@@ -435,6 +666,111 @@ def load_demo_data(request: Request, store_id: int):
             status_code=302
         )
 
+
+@app.post("/store/{store_id}/column-mapping")
+def save_column_mapping(
+    request: Request,
+    store_id: int,
+    source_column: str = Form(...),
+    target_column: str = Form(...)
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    # Owner can only update own store mappings; admin can update any.
+    if not is_admin(phone):
+        own_store = get_store_by_phone_number(phone)
+        if not own_store or own_store["id"] != store_id:
+            return RedirectResponse(url="/dashboard?error=Unauthorized", status_code=302)
+
+    store_row = run_query(
+        "select id, plan from stores where id = %s",
+        (store_id,)
+    )
+    if not store_row:
+        next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+        return RedirectResponse(url=f"{next_url}?error=Store+not+found", status_code=302)
+
+    if not get_plan_features(store_row[0].get("plan"))["csv_mapping"]:
+        next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+        return RedirectResponse(
+            url=f"{next_url}?error=CSV+mapping+is+available+on+Growth+and+Pro+plans",
+            status_code=302
+        )
+
+    source = source_column.strip().lower().replace(" ", "_")
+    target = target_column.strip().lower().replace(" ", "_")
+    if not source or target not in TARGET_COLUMNS:
+        next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+        return RedirectResponse(
+            url=f"{next_url}?error=Invalid+column+mapping",
+            status_code=302
+        )
+
+    ensure_column_mapping_support()
+    run_query(
+        '''
+        insert into store_column_mappings (store_id, source_column, target_column)
+        values (%s, %s, %s)
+        on conflict (store_id, source_column)
+        do update set target_column = excluded.target_column
+        ''',
+        (store_id, source, target),
+        fetch=False
+    )
+    next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+    return RedirectResponse(
+        url=f"{next_url}?success=Column+mapping+saved",
+        status_code=302
+    )
+
+
+@app.post("/store/{store_id}/column-mapping/delete")
+def delete_column_mapping(
+    request: Request,
+    store_id: int,
+    source_column: str = Form(...)
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    if not is_admin(phone):
+        own_store = get_store_by_phone_number(phone)
+        if not own_store or own_store["id"] != store_id:
+            return RedirectResponse(url="/dashboard?error=Unauthorized", status_code=302)
+
+    store_row = run_query(
+        "select id, plan from stores where id = %s",
+        (store_id,)
+    )
+    if not store_row:
+        next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+        return RedirectResponse(url=f"{next_url}?error=Store+not+found", status_code=302)
+
+    if not get_plan_features(store_row[0].get("plan"))["csv_mapping"]:
+        next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+        return RedirectResponse(
+            url=f"{next_url}?error=CSV+mapping+is+available+on+Growth+and+Pro+plans",
+            status_code=302
+        )
+
+    ensure_column_mapping_support()
+    run_query(
+        '''
+        delete from store_column_mappings
+        where store_id = %s and source_column = %s
+        ''',
+        (store_id, source_column.strip().lower().replace(" ", "_")),
+        fetch=False
+    )
+    next_url = f"/admin/store/{store_id}" if is_admin(phone) else "/dashboard"
+    return RedirectResponse(
+        url=f"{next_url}?success=Column+mapping+removed",
+        status_code=302
+    )
+
 # ─────────────────────────────────────────
 # FILE UPLOAD FROM DASHBOARD
 # ─────────────────────────────────────────
@@ -463,6 +799,7 @@ async def upload_file(
         return RedirectResponse(url="/login", status_code=302)
 
     try:
+        plan_features = get_plan_features(store.get("plan"))
         suffix = (os.path.splitext(file.filename or "")[1] or "").lower()
         if suffix not in ALLOWED_UPLOAD_EXTENSIONS:
             redirect_url = (
@@ -479,7 +816,8 @@ async def upload_file(
             tmp.write(content)
             tmp_path = tmp.name
 
-        result = process_file(tmp_path, store['id'])
+        mapping = get_store_column_mapping(store['id']) if plan_features["csv_mapping"] else None
+        result = process_file(tmp_path, store['id'], column_mapping=mapping)
 
         run_query('''
             insert into uploads
@@ -648,6 +986,7 @@ async def receive_message(
 
         # Handle text message
         elif msg_type == "text":
+            plan_features = get_plan_features(store.get("plan"))
             text = message['text']['body'].lower().strip()
             if text in ["summary", "report", "stats"]:
                 background_tasks.add_task(
@@ -657,11 +996,18 @@ async def receive_message(
                     phone
                 )
             else:
-                background_tasks.add_task(
-                    handle_ai_question,
-                    message['text']['body'],
-                    store
-                )
+                if plan_features["ai_assistant"]:
+                    background_tasks.add_task(
+                        handle_ai_question,
+                        message['text']['body'],
+                        store
+                    )
+                else:
+                    send_whatsapp_message(
+                        phone,
+                        "AI assistant is available on Pro plan. "
+                        "Reply with 'summary' to get your analytics report."
+                    )
         else:
             send_whatsapp_message(
                 phone,
@@ -713,7 +1059,9 @@ async def handle_file_upload(file_id, file_name, store):
             tmp_path = tmp.name
 
         # Step 5 — Process the file
-        result = process_file(tmp_path, store_id)
+        plan_features = get_plan_features(store.get("plan"))
+        mapping = get_store_column_mapping(store_id) if plan_features["csv_mapping"] else None
+        result = process_file(tmp_path, store_id, column_mapping=mapping)
 
         # Step 6 — Log the upload
         run_query('''

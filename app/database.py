@@ -30,14 +30,22 @@ def run_query(query, params=None, fetch=True):
 
 def get_store_by_phone(phone_number):
     results = run_query(
-        "select * from stores where phone_number = %s",
+        '''
+        select * from stores
+        where phone_number = %s
+          and coalesce(is_active, true) = true
+        ''',
         (phone_number,)
     )
     return results[0] if results else None
 
 def get_store_by_name(shop_name):
     results = run_query(
-        "select * from stores where shop_name = %s",
+        '''
+        select * from stores
+        where shop_name = %s
+          and coalesce(is_active, true) = true
+        ''',
         (shop_name,)
     )
     return results[0] if results else None

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StoreIQ — {{ store.shop_name | title }}</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="dashboard">
@@ -37,6 +38,47 @@
                 <div class="label">📦 Units Sold</div>
                 <div class="value">{{ summary.total_units or 0 }}</div>
             </div>
+        </div>
+
+        <div class="section">
+            <h2>🧾 Current Plan</h2>
+            <p style="color:#666; font-size:14px;">
+                Your store is on <strong>{{ plan_features.label }}</strong>.
+                {% if plan_features.charts %}
+                Charts are enabled.
+                {% else %}
+                Upgrade to Growth or Pro to unlock charts.
+                {% endif %}
+                {% if plan_features.ai_assistant %}
+                AI assistant is enabled.
+                {% else %}
+                AI assistant is available on Pro.
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>📊 Performance Charts</h2>
+            {% if not plan_features.charts %}
+            <p class="empty">Charts are available on Growth and Pro plans.</p>
+            {% elif trend_labels %}
+            <div class="chart-grid">
+                <div class="chart-card">
+                    <h3>Revenue vs Profit (Last 7 Days)</h3>
+                    <div class="chart-wrap">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>Category Revenue Share</h3>
+                    <div class="chart-wrap">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="empty">Not enough data to render charts yet.</p>
+            {% endif %}
         </div>
 
         <!-- TOP PRODUCTS: mobile cards / desktop table (768px) -->
@@ -309,6 +351,45 @@
         <p style="margin:0 0 12px;">
             <a href="/demo/sample-file" class="back-link">Download sample file</a>
         </p>
+
+        <div style="margin:0 0 12px;">
+            <h3 style="font-size:13px; margin-bottom:8px;">CSV Column Mapping</h3>
+            {% if plan_features.csv_mapping %}
+            <form method="POST" action="/store/{{ store.id }}/column-mapping" class="form-grid">
+                <div class="form-group">
+                    <label>Your Column Name</label>
+                    <input type="text" name="source_column" placeholder="e.g. qty_sold" required />
+                </div>
+                <div class="form-group">
+                    <label>Map To</label>
+                    <select name="target_column" required>
+                        {% for col in target_columns %}
+                        <option value="{{ col }}">{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn" style="max-width:220px;">Save Mapping</button>
+            </form>
+            {% if mapping_rows %}
+            <div class="data-list" style="margin-top:10px;">
+                {% for m in mapping_rows %}
+                <div class="data-card">
+                    <div>
+                        <div class="name">{{ m.source_column }}</div>
+                        <div class="sub">→ {{ m.target_column }}</div>
+                    </div>
+                    <form method="POST" action="/store/{{ store.id }}/column-mapping/delete">
+                        <input type="hidden" name="source_column" value="{{ m.source_column }}" />
+                        <button type="submit" class="restore-btn">Remove</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="empty" style="padding:10px;">CSV mapping templates are available on Growth and Pro plans.</p>
+            {% endif %}
+        </div>
         {% if is_admin_view %}
         <form method="POST" action="/admin/store/{{ store.id }}/load-demo-data" style="margin:0 0 12px;">
             <button type="submit" class="btn" style="max-width:240px;">
@@ -387,5 +468,85 @@
             </button>
         </form>
     </div>
+
+    {% if plan_features.charts and trend_labels %}
+    <script id="trend-labels" type="application/json">{{ trend_labels | tojson }}</script>
+    <script id="trend-revenue" type="application/json">{{ trend_revenue | tojson }}</script>
+    <script id="trend-profit" type="application/json">{{ trend_profit | tojson }}</script>
+    <script id="category-labels" type="application/json">{{ category_labels | tojson }}</script>
+    <script id="category-revenue" type="application/json">{{ category_revenue | tojson }}</script>
+    <script>
+        const trendLabels = JSON.parse(document.getElementById('trend-labels').textContent);
+        const trendRevenue = JSON.parse(document.getElementById('trend-revenue').textContent);
+        const trendProfit = JSON.parse(document.getElementById('trend-profit').textContent);
+        const categoryLabels = JSON.parse(document.getElementById('category-labels').textContent);
+        const categoryRevenue = JSON.parse(document.getElementById('category-revenue').textContent);
+
+        const trendCtx = document.getElementById('trendChart');
+        if (trendCtx) {
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: trendLabels,
+                    datasets: [
+                        {
+                            label: 'Revenue',
+                            data: trendRevenue,
+                            borderColor: '#1565c0',
+                            backgroundColor: 'rgba(21,101,192,0.12)',
+                            tension: 0.25,
+                            fill: true
+                        },
+                        {
+                            label: 'Profit',
+                            data: trendProfit,
+                            borderColor: '#00a045',
+                            backgroundColor: 'rgba(0,160,69,0.12)',
+                            tension: 0.25,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        const categoryCtx = document.getElementById('categoryChart');
+        if (categoryCtx && categoryLabels.length > 0) {
+            new Chart(categoryCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: categoryLabels,
+                    datasets: [
+                        {
+                            data: categoryRevenue,
+                            backgroundColor: [
+                                '#1565c0', '#00a045', '#f9a825', '#8e24aa',
+                                '#ef6c00', '#00838f', '#6d4c41', '#c62828'
+                            ]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+    {% endif %}
 </body>
 </html>
