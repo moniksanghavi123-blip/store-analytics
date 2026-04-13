@@ -20,9 +20,9 @@ load_dotenv()
 
 app = FastAPI()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN")
-VERIFY_TOKEN       = os.getenv("VERIFY_TOKEN")
+WA_TOKEN     = os.getenv("WA_TOKEN")
+WA_PHONE_ID  = os.getenv("WA_PHONE_ID")
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -478,19 +478,6 @@ def add_sale(
         return RedirectResponse(url=redirect_url, status_code=302)
 
 # ─────────────────────────────────────────
-# WHATSAPP WEBHOOK
-# ─────────────────────────────────────────
-
-# OLD WEBHOOK VERIFICATION (kept for reference)
-# @app.get("/webhook")
-# async def verify_webhook_old(request: Request):
-#     verify_token = request.query_params.get("hub.verify_token")
-#     challenge = request.query_params.get("hub.challenge")
-#     if verify_token == VERIFY_TOKEN:
-#         return PlainTextResponse(content=challenge)
-#     return PlainTextResponse(content="Forbidden", status_code=403)
-
-# ─────────────────────────────────────────
 # META WEBHOOK VERIFICATION
 # ─────────────────────────────────────────
 @app.get("/webhook")
@@ -499,108 +486,137 @@ async def verify_webhook(request: Request):
     token     = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    print(f"Webhook verify: mode={mode} token={token} challenge={challenge}")
+    print(f"Webhook verify: mode={mode} token={token}")
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
         print("Webhook verified!")
         return PlainTextResponse(content=challenge)
 
-    print("Webhook verification failed")
     return PlainTextResponse(content="Forbidden", status_code=403)
 
+# ─────────────────────────────────────────
+# RECEIVE WHATSAPP MESSAGES FROM META
+# ─────────────────────────────────────────
 @app.post("/webhook")
 async def receive_message(
     request: Request,
-    background_tasks: BackgroundTasks,
-    From: str = Form(None),
-    Body: str = Form(None),
-    MediaUrl0: str = Form(None),
-    MediaContentType0: str = Form(None),
-    NumMedia: str = Form(None)
+    background_tasks: BackgroundTasks
 ):
-    phone = From.replace("whatsapp:+", "") if From else None
+    body = await request.json()
+    print(f"Webhook received: {body}")
 
-    if not phone:
-        return PlainTextResponse("ok")
+    try:
+        entry = body['entry'][0]['changes'][0]['value']
 
-    store = get_store_by_phone(phone)
-    if not store:
-        send_whatsapp_message(phone,
-            "Sorry, your number is not registered. "
-            "Please contact support.")
-        return PlainTextResponse("ok")
+        # Ignore status updates
+        if 'messages' not in entry:
+            return {"status": "ignored"}
 
-    if NumMedia and int(NumMedia) > 0 and MediaUrl0:
-        background_tasks.add_task(
-            handle_file_upload,
-            MediaUrl0, MediaContentType0, store
-        )
-        send_whatsapp_message(phone,
-            "✅ File received! Processing your data now. "
-            "You'll get your summary shortly.")
+        message = entry['messages'][0]
+        phone = message['from']
+        msg_type = message['type']
 
-    elif Body:
-        text = Body.lower().strip()
-        if text in ['summary', 'report', 'stats']:
-            background_tasks.add_task(
-                send_store_summary,
-                store['id'], store['shop_name'], phone
+        # Look up store by phone number
+        store = get_store_by_phone(phone)
+        if not store:
+            send_whatsapp_message(
+                phone,
+                "Sorry, your number is not registered. "
+                "Please contact support."
             )
-        else:
+            return {"status": "unregistered"}
+
+        # Handle document/file message
+        if msg_type == "document":
+            file_id = message['document']['id']
+            file_name = message['document'].get('filename', 'upload.xlsx')
             background_tasks.add_task(
-                handle_ai_question, Body, store
+                handle_file_upload,
+                file_id, file_name, store
+            )
+            send_whatsapp_message(
+                phone,
+                "✅ File received! Processing your data now. "
+                "You'll get your summary shortly."
             )
 
-    return PlainTextResponse("ok")
+        # Handle text message
+        elif msg_type == "text":
+            text = message['text']['body'].lower().strip()
+            if text in ["summary", "report", "stats"]:
+                background_tasks.add_task(
+                    send_store_summary,
+                    store['id'],
+                    store['shop_name'],
+                    phone
+                )
+            else:
+                background_tasks.add_task(
+                    handle_ai_question,
+                    message['text']['body'],
+                    store
+                )
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        return {"status": "error", "detail": str(e)}
 
 # ─────────────────────────────────────────
-# FILE UPLOAD HANDLER
+# FILE UPLOAD FROM META WHATSAPP
 # ─────────────────────────────────────────
 
-async def handle_file_upload(media_url, content_type, store):
+async def handle_file_upload(file_id, file_name, store):
     phone    = store['phone_number']
     store_id = store['id']
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                media_url,
-                auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
-                follow_redirects=True,
-                headers={"Accept": "*/*"}
+            # Step 1 — Get file URL from Meta
+            meta_response = await client.get(
+                f"https://graph.facebook.com/v18.0/{file_id}",
+                headers={"Authorization": f"Bearer {WA_TOKEN}"}
+            )
+            file_url = meta_response.json()['url']
+
+            # Step 2 — Download the file
+            file_response = await client.get(
+                file_url,
+                headers={"Authorization": f"Bearer {WA_TOKEN}"}
             )
 
-        ext_map = {
-            'application/vnd.openxmlformats-officedocument'
-            '.spreadsheetml.sheet': '.xlsx',
-            'application/vnd.ms-excel': '.xls',
-            'text/csv':   '.csv',
-            'text/plain': '.csv'
-        }
-        suffix = ext_map.get(content_type, '.xlsx')
+        # Step 3 — Determine extension
+        suffix = os.path.splitext(file_name)[1] or '.xlsx'
 
+        # Step 4 — Save to temp file
         with tempfile.NamedTemporaryFile(
             delete=False, suffix=suffix
         ) as tmp:
-            tmp.write(response.content)
+            tmp.write(file_response.content)
             tmp_path = tmp.name
 
+        # Step 5 — Process the file
         result = process_file(tmp_path, store_id)
 
+        # Step 6 — Log the upload
         run_query('''
             insert into uploads
             (store_id, file_name, rows_processed, rows_failed, status)
             values (%s, %s, %s, %s, %s)
         ''', (
-            store_id, f"upload{suffix}",
+            store_id, file_name,
             result['rows_processed'],
             result['rows_failed'],
             result['status']
         ), fetch=False)
 
-        send_whatsapp_message(phone,
+        # Step 7 — Send confirmation + summary
+        send_whatsapp_message(
+            phone,
             f"✅ Processed *{result['rows_processed']}* rows successfully!")
         send_store_summary(store_id, store['shop_name'], phone)
+
         os.unlink(tmp_path)
 
     except Exception as e:

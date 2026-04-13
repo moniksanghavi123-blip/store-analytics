@@ -1,15 +1,35 @@
 import os
-from twilio.rest import Client
+import httpx
 from dotenv import load_dotenv
 from app.analytics import build_summary
 
 load_dotenv()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")
+WA_TOKEN    = os.getenv("WA_TOKEN")
+WA_PHONE_ID = os.getenv("WA_PHONE_ID")
 
-client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+def send_whatsapp_message(to_number, message):
+    """Send a WhatsApp message via Meta API"""
+    url = f"https://graph.facebook.com/v18.0/{WA_PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WA_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": message}
+    }
+
+    response = httpx.post(url, headers=headers, json=payload)
+
+    if response.status_code == 200:
+        print(f"Message sent to {to_number}")
+        return True
+    else:
+        print(f"Failed to send: {response.text}")
+        return False
 
 def format_summary_message(shop_name, summary):
     """Format analytics summary into WhatsApp message"""
@@ -27,20 +47,6 @@ def format_summary_message(shop_name, summary):
 
 _Powered by StoreIQ_ ✨"""
     return message
-
-def send_whatsapp_message(to_number, message):
-    """Send a WhatsApp message via Twilio"""
-    try:
-        msg = client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=f"whatsapp:+{to_number}",
-            body=message
-        )
-        print(f"Message sent to {to_number} — SID: {msg.sid}")
-        return True
-    except Exception as e:
-        print(f"Failed to send message: {e}")
-        return False
 
 def send_store_summary(store_id, shop_name, phone_number):
     """Build summary and send to store owner"""
