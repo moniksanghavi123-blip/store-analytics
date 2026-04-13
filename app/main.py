@@ -596,6 +596,29 @@ def restore_store(request: Request, store_id: int):
         status_code=302
     )
 
+@app.post("/admin/store/{store_id}/change-plan")
+def change_plan(request: Request, store_id: int, plan: str = Form(...)):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    valid_plans = {"starter", "growth", "pro"}
+    if plan not in valid_plans:
+        return RedirectResponse(
+            url=f"/admin/store/{store_id}?error=Invalid+plan+selected",
+            status_code=302
+        )
+
+    run_query(
+        "update stores set plan = %s where id = %s",
+        (plan, store_id),
+        fetch=False
+    )
+    return RedirectResponse(
+        url=f"/admin/store/{store_id}?success=Plan+updated+to+{plan.title()}",
+        status_code=302
+    )
+
 def load_demo_sales_data(store_id: int):
     """Reset and seed 7 days of realistic demo sales."""
     today = date.today()

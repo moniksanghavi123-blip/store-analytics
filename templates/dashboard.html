@@ -405,33 +405,55 @@
         </p>
 
         <div style="margin:0 0 12px;">
-            <h3 style="font-size:13px; margin-bottom:8px;">CSV Column Mapping</h3>
-            {% if plan_features.csv_mapping %}
-            <form method="POST" action="/store/{{ store.id }}/column-mapping" class="form-grid">
-                <div class="form-group">
-                    <label>Your Column Name</label>
-                    <input type="text" name="source_column" placeholder="e.g. qty_sold" required />
-                </div>
-                <div class="form-group">
-                    <label>Map To</label>
-                    <select name="target_column" required>
-                        <optgroup label="Required">
-                            {% for col in target_columns[:5] %}
-                            <option value="{{ col }}">{{ col }}</option>
-                            {% endfor %}
-                        </optgroup>
-                        <optgroup label="Optional">
-                            {% for col in target_columns[5:] %}
-                            <option value="{{ col }}">{{ col }}</option>
-                            {% endfor %}
-                        </optgroup>
-                    </select>
-                    <p style="font-size:11px; color:var(--muted); margin-top:4px;">
-                        e.g. if your CSV has "qty_sold" → map it to "quantity_sold"
-                    </p>
-                </div>
-                <button type="submit" class="btn" style="max-width:220px;">Save Mapping</button>
-            </form>
+            <h3 style="font-size:13px; margin-bottom:4px;">CSV Column Mapping</h3>
+<p style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+    If your CSV uses different column names, map them here so StoreIQ can read your file correctly.
+</p>
+
+<!-- Column reference table -->
+<div style="background:var(--bg); border-radius:10px; padding:12px; margin-bottom:14px; font-size:12px;">
+    <div style="font-weight:600; margin-bottom:8px; font-size:12px;">📋 Expected Columns</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+        <div>
+            <div style="color:var(--muted); font-size:11px; font-weight:600; margin-bottom:4px;">REQUIRED</div>
+            {% for col in ['product_name','quantity_sold','selling_price','purchase_price','sale_date'] %}
+            <div style="background:var(--red-soft); color:#c62828; border-radius:6px; padding:3px 8px; margin-bottom:3px; font-family:'DM Mono',monospace; font-size:11px;">{{ col }}</div>
+            {% endfor %}
+        </div>
+        <div>
+            <div style="color:var(--muted); font-size:11px; font-weight:600; margin-bottom:4px;">OPTIONAL</div>
+            {% for col in ['category','opening_stock','closing_stock'] %}
+            <div style="background:var(--green-soft); color:#2e7d32; border-radius:6px; padding:3px 8px; margin-bottom:3px; font-family:'DM Mono',monospace; font-size:11px;">{{ col }}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if plan_features.csv_mapping %}
+<form method="POST" action="/store/{{ store.id }}/column-mapping" class="form-grid">
+    <div class="form-group">
+        <label>Your CSV Column Name</label>
+        <input type="text" name="source_column" placeholder="e.g. qty_sold, items_sold, units" required />
+        <p style="font-size:11px; color:var(--muted); margin-top:4px;">The column name as it appears in your file</p>
+    </div>
+    <div class="form-group">
+        <label>Maps To (StoreIQ Column)</label>
+        <select name="target_column" required style="width:100%; padding:12px 16px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; background:#fafafa; outline:none;">
+            <option disabled value="">— Required columns —</option>
+            <option value="product_name">product_name</option>
+            <option value="quantity_sold">quantity_sold</option>
+            <option value="selling_price">selling_price</option>
+            <option value="purchase_price">purchase_price</option>
+            <option value="sale_date">sale_date</option>
+            <option disabled value="">— Optional columns —</option>
+            <option value="category">category</option>
+            <option value="opening_stock">opening_stock</option>
+            <option value="closing_stock">closing_stock</option>
+        </select>
+        <p style="font-size:11px; color:var(--muted); margin-top:4px;">The StoreIQ column it should be treated as</p>
+    </div>
+    <button type="submit" class="btn" style="max-width:220px;">Save Mapping</button>
+</form>
             {% if mapping_rows %}
             <div class="data-list" style="margin-top:10px;">
                 {% for m in mapping_rows %}
