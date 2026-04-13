@@ -22,6 +22,7 @@ app = FastAPI()
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN")
+VERIFY_TOKEN       = os.getenv("VERIFY_TOKEN")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -479,6 +480,33 @@ def add_sale(
 # ─────────────────────────────────────────
 # WHATSAPP WEBHOOK
 # ─────────────────────────────────────────
+
+# OLD WEBHOOK VERIFICATION (kept for reference)
+# @app.get("/webhook")
+# async def verify_webhook_old(request: Request):
+#     verify_token = request.query_params.get("hub.verify_token")
+#     challenge = request.query_params.get("hub.challenge")
+#     if verify_token == VERIFY_TOKEN:
+#         return PlainTextResponse(content=challenge)
+#     return PlainTextResponse(content="Forbidden", status_code=403)
+
+# ─────────────────────────────────────────
+# META WEBHOOK VERIFICATION
+# ─────────────────────────────────────────
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    mode      = request.query_params.get("hub.mode")
+    token     = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    print(f"Webhook verify: mode={mode} token={token} challenge={challenge}")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        print("Webhook verified!")
+        return PlainTextResponse(content=challenge)
+
+    print("Webhook verification failed")
+    return PlainTextResponse(content="Forbidden", status_code=403)
 
 @app.post("/webhook")
 async def receive_message(
