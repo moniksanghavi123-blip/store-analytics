@@ -381,9 +381,8 @@ def add_store(
             values (%s, %s, %s, %s, %s, %s)
         ''', (
             shop_name.lower().strip(),
-            owner_name.strip(),
-            phone_number.strip(),
-            address.strip(),
+            owner_name.strip(), 
+            phone_number.strip().replace("+", "").replace(" ", "").lower(),            address.strip(),
             store_type.strip(),
             plan
         ), fetch=False)
@@ -981,10 +980,12 @@ async def receive_message(
 
         message = entry['messages'][0]
         phone = message['from']
+        print(f"[WEBHOOK] Incoming from: '{phone}'")
         msg_type = message['type']
 
         # Look up store by phone number
         store = get_store_by_phone(phone)
+        print(f"[WEBHOOK] Store lookup result: {store}")  # ← add this
         if not store:
             send_whatsapp_message(
                 phone,

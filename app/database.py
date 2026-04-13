@@ -29,13 +29,15 @@ def run_query(query, params=None, fetch=True):
         conn.close()
 
 def get_store_by_phone(phone_number):
+    # Normalize: strip +, spaces
+    normalized = phone_number.strip().replace("+", "").replace(" ", "")
     results = run_query(
         '''
         select * from stores
-        where phone_number = %s
+        where replace(replace(phone_number, '+', ''), ' ', '') = %s
           and coalesce(is_active, true) = true
         ''',
-        (phone_number,)
+        (normalized,)
     )
     return results[0] if results else None
 
