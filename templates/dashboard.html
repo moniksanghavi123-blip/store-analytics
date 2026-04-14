@@ -373,10 +373,10 @@
 
 <script>
 // ── Chart Data ──
-const labels  = {{ daily_trend | map(attribute='sale_date') | list | tojson }};
-const revenue = {{ daily_trend | map(attribute='revenue')   | list | tojson }};
-const profit  = {{ daily_trend | map(attribute='profit')    | list | tojson }};
-const units   = {{ daily_trend | map(attribute='units')     | list | tojson }};
+const labels  = {{ trend_labels  | tojson }};
+const revenue = {{ trend_revenue | tojson }};
+const profit  = {{ trend_profit  | tojson }};
+const units   = {{ trend_units   | tojson }};
 
 const ctx = document.getElementById('performanceChart').getContext('2d');
 const chart = new Chart(ctx, {

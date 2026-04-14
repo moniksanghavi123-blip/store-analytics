@@ -256,6 +256,11 @@ def dashboard(request: Request, period: str = "7d",
         limit 10
     ''', (store_id,))
 
+    trend_labels  = [str(d["sale_date"]) for d in daily_trend]
+    trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
+    trend_profit  = [float(d["profit"] or 0) for d in daily_trend]
+    trend_units   = [float(d["units"] or 0) for d in daily_trend]
+
     # Plan upgrade requests
     upgrade_requests = run_query('''
         select * from plan_requests
@@ -274,6 +279,10 @@ def dashboard(request: Request, period: str = "7d",
             "low_stock":        low_stock,
             "dead_stock":       dead_stock,
             "daily_trend":      daily_trend,
+            "trend_labels":     trend_labels,
+            "trend_revenue":    trend_revenue,
+            "trend_profit":     trend_profit,
+            "trend_units":      trend_units,
             "categories":       categories,
             "uploads":          uploads,
             "period":           period,
@@ -478,9 +487,10 @@ def admin_store_detail(request: Request, store_id: int):
     dead_stock   = get_dead_stock(store_id)
     daily_trend  = get_daily_trend(store_id, days=7)
     category_breakdown = get_category_breakdown(store_id, days=7)
-    trend_labels = [str(d["sale_date"]) for d in daily_trend]
+    trend_labels  = [str(d["sale_date"]) for d in daily_trend]
     trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
-    trend_profit = [float(d["profit"] or 0) for d in daily_trend]
+    trend_profit  = [float(d["profit"] or 0) for d in daily_trend]
+    trend_units   = [float(d["units"] or 0) for d in daily_trend]
     category_labels = [str(c["category"] or "Uncategorized") for c in category_breakdown]
     category_revenue = [float(c["revenue"] or 0) for c in category_breakdown]
     column_mapping = get_store_column_mapping(store_id)
@@ -506,9 +516,10 @@ def admin_store_detail(request: Request, store_id: int):
             "dead_stock":   dead_stock,
             "daily_trend":  daily_trend,
             "category_breakdown": category_breakdown,
-            "trend_labels": trend_labels,
+            "trend_labels":  trend_labels,
             "trend_revenue": trend_revenue,
-            "trend_profit": trend_profit,
+            "trend_profit":  trend_profit,
+            "trend_units":   trend_units,
             "category_labels": category_labels,
             "category_revenue": category_revenue,
             "plan_features": plan_features,
