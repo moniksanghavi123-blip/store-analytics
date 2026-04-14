@@ -220,12 +220,12 @@ def logout():
 # ─────────────────────────────────────────
 
 @app.get("/dashboard")
-def dashboard(request: Request):
+def dashboard(request: Request, period: str = "7d",
+              start_date: str = None, end_date: str = None):
     phone = request.cookies.get("phone")
     if not phone:
         return RedirectResponse(url="/login", status_code=302)
 
-    # Admin should use /admin not /dashboard
     if is_admin(phone):
         return RedirectResponse(url="/admin", status_code=302)
 
@@ -233,24 +233,22 @@ def dashboard(request: Request):
     if not store:
         return RedirectResponse(url="/login", status_code=302)
 
-    store_id     = store['id']
-    plan_features = get_plan_features(store.get("plan"))
-    summary      = get_store_summary(store_id, days=7)
-    top_products = get_top_products(store_id, days=7, limit=5)
+    store_id = store['id']
+
+    # Parse custom dates
+    sd = start_date if start_date else None
+    ed = end_date if end_date else None
+
+    summary      = get_store_summary(store_id, period=period,
+                                     start_date=sd, end_date=ed)
+    top_products = get_top_products(store_id, period=period,
+                                    start_date=sd, end_date=ed)
     low_stock    = get_low_stock(store_id)
     dead_stock   = get_dead_stock(store_id)
-    daily_trend  = get_daily_trend(store_id, days=7)
-    category_breakdown = get_category_breakdown(store_id, days=7)
-    trend_labels = [str(d["sale_date"]) for d in daily_trend]
-    trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
-    trend_profit = [float(d["profit"] or 0) for d in daily_trend]
-    category_labels = [str(c["category"] or "Uncategorized") for c in category_breakdown]
-    category_revenue = [float(c["revenue"] or 0) for c in category_breakdown]
-    column_mapping = get_store_column_mapping(store_id)
-    mapping_rows = [
-        {"source_column": k, "target_column": v}
-        for k, v in column_mapping.items()
-    ]
+    daily_trend  = get_daily_trend(store_id, period=period,
+                                   start_date=sd, end_date=ed)
+    categories   = get_category_breakdown(store_id, period=period,
+                                          start_date=sd, end_date=ed)
     uploads      = run_query('''
         select * from uploads
         where store_id = %s
@@ -258,28 +256,29 @@ def dashboard(request: Request):
         limit 10
     ''', (store_id,))
 
+    # Plan upgrade requests
+    upgrade_requests = run_query('''
+        select * from plan_requests
+        where store_id = %s
+        order by created_at desc
+        limit 1
+    ''', (store_id,)) if table_exists('plan_requests') else []
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
-            "store":        store,
-            "summary":      summary,
-            "top_products": top_products,
-            "low_stock":    low_stock,
-            "dead_stock":   dead_stock,
-            "daily_trend":  daily_trend,
-            "category_breakdown": category_breakdown,
-            "trend_labels": trend_labels,
-            "trend_revenue": trend_revenue,
-            "trend_profit": trend_profit,
-            "category_labels": category_labels,
-            "category_revenue": category_revenue,
-            "plan_features": plan_features,
-            "mapping_rows": mapping_rows,
-            "target_columns": TARGET_COLUMNS,
-            "uploads":      uploads,
-            "today":        date.today().isoformat(),
-            "is_admin_view": False
+            "store":            store,
+            "summary":          summary,
+            "top_products":     top_products,
+            "low_stock":        low_stock,
+            "dead_stock":       dead_stock,
+            "daily_trend":      daily_trend,
+            "categories":       categories,
+            "uploads":          uploads,
+            "period":           period,
+            "today":            date.today().isoformat(),
+            "upgrade_requests": upgrade_requests
         }
     )
 

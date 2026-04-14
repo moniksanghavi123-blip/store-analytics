@@ -74,51 +74,66 @@ def validate_columns(df):
 
 def clean_data(df):
     """Clean and type cast all columns"""
-    # Drop completely empty rows
-    df = df.dropna(how='all').copy()
+    df = df.dropna(how='all')
 
     # Clean string columns
     if 'product_name' in df.columns:
-        df['product_name'] = (
-            df['product_name']
-            .astype(str)
-            .str.strip()
-            .replace({'nan': None, 'None': None, '': None})
-        )
+        df['product_name'] = df['product_name'].str.lower().str.strip()
+
+    # Fix category — use product_name based mapping if missing
+    CATEGORY_MAP = {
+        'butter': 'dairy', 'milk': 'dairy', 'cheese': 'dairy',
+        'parle': 'biscuits', 'britannia': 'biscuits', 'biscuit': 'biscuits',
+        'bread': 'bakery', 'cake': 'bakery',
+        'maggi': 'food', 'atta': 'food', 'oil': 'food', 'rice': 'food',
+        'tea': 'beverages', 'coffee': 'beverages', 'frooti': 'beverages',
+        'surf': 'household', 'vim': 'household', 'lizol': 'household',
+        'dettol': 'personal', 'colgate': 'personal', 'shampoo': 'personal',
+        'chips': 'snacks', 'namkeen': 'snacks', 'lays': 'snacks',
+        'dairy milk': 'chocolate', 'chocolate': 'chocolate',
+        'gold': 'jewellery', 'ring': 'jewellery', 'necklace': 'jewellery',
+        'shirt': 'clothing', 'jeans': 'clothing', 'dress': 'clothing',
+        'shoe': 'footwear', 'sandal': 'footwear', 'chappal': 'footwear',
+    }
+
     if 'category' in df.columns:
-        df['category'] = (
-            df['category']
-            .astype(str)
-            .str.lower()
-            .str.strip()
-            .replace({'nan': None, 'none': None, '': None})
-        )
+        df['category'] = df['category'].str.lower().str.strip()
+        # Fill missing category based on product name
+        def guess_category(row):
+            if pd.notna(row.get('category')) and row.get('category') != '':
+                return row['category']
+            product = str(row.get('product_name', '')).lower()
+            for keyword, cat in CATEGORY_MAP.items():
+                if keyword in product:
+                    return cat
+            return 'general'
+        df['category'] = df.apply(guess_category, axis=1)
+    else:
+        # No category column — guess from product name
+        def guess_from_product(product):
+            product = str(product).lower()
+            for keyword, cat in CATEGORY_MAP.items():
+                if keyword in product:
+                    return cat
+            return 'general'
+        df['category'] = df['product_name'].apply(guess_from_product)
 
     # Convert numeric columns
-    numeric_cols = ['quantity_sold', 'selling_price', 
+    numeric_cols = ['quantity_sold', 'selling_price',
                     'purchase_price', 'opening_stock', 'closing_stock']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Convert date column
-    df['sale_date'] = pd.to_datetime(df['sale_date'], 
-                                      dayfirst=True, 
-                                      errors='coerce')
+    # Convert date
+    df['sale_date'] = pd.to_datetime(
+        df['sale_date'], dayfirst=True, errors='coerce'
+    )
 
-    # Fill optional numeric columns with neutral defaults where helpful
-    if 'purchase_price' in df.columns:
-        df['purchase_price'] = df['purchase_price'].fillna(0)
-
-    # Drop rows with missing critical values
+    # Drop invalid rows
     df = df.dropna(subset=['product_name', 'quantity_sold',
-                           'selling_price', 'sale_date'])
-
-    # Drop rows with impossible values
-    df = df[
-        (df['quantity_sold'] > 0)
-        & (df['selling_price'] >= 0)
-    ]
+                            'selling_price', 'sale_date'])
+    df = df[df['quantity_sold'] > 0]
 
     return df
 

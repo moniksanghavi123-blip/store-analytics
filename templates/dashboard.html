@@ -6,513 +6,244 @@
     <title>StoreIQ — {{ store.shop_name | title }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs"></script>
 </head>
 <body>
-    <div class="dashboard">
+<div class="dashboard">
 
-        <!-- HEADER -->
-        <div class="dashboard-header">
-            <div>
-                <a href="/admin" class="back-link">← Admin</a>
-                <h1>🏪 {{ store.shop_name.replace('_', ' ') | title }}</h1>
-                <span>Last 7 days performance</span>
-            </div>
-            <a href="/logout" class="logout">Logout</a>
-        </div>
-
-        <!-- STAT CARDS -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="label">💰 Total Revenue</div>
-                <div class="value green">₹{{ summary.total_revenue or 0 }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">📈 Total Profit</div>
-                <div class="value green">₹{{ summary.total_profit or 0 }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">📊 Margin</div>
-                <div class="value blue">{{ summary.margin_pct or 0 }}%</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">📦 Units Sold</div>
-                <div class="value">{{ summary.total_units or 0 }}</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>🧾 Current Plan</h2>
-            <p style="color:#666; font-size:14px; margin-bottom:12px;">
-                Your store is on <strong>{{ plan_features.label }}</strong>.
-                {% if plan_features.charts %}Charts are enabled.{% else %}Upgrade to Growth or Pro to unlock charts.{% endif %}
-                {% if plan_features.ai_assistant %}AI assistant is enabled.{% else %}AI assistant is available on Pro.{% endif %}
-            </p>
-        
-            <!-- Plan feature matrix -->
-            <div style="overflow-x:auto; margin-bottom:14px;">
-                <table style="min-width:0; font-size:13px;">
-                    <thead>
-                        <tr>
-                            <th>Feature</th>
-                            <th style="text-align:center;">Starter</th>
-                            <th style="text-align:center;">Growth</th>
-                            <th style="text-align:center;">Pro</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Dashboard & Analytics</td>
-                            <td style="text-align:center;">✅</td>
-                            <td style="text-align:center;">✅</td>
-                            <td style="text-align:center;">✅</td>
-                        </tr>
-                        <tr>
-                            <td>Charts & Graphs</td>
-                            <td style="text-align:center;">❌</td>
-                            <td style="text-align:center;">✅</td>
-                            <td style="text-align:center;">✅</td>
-                        </tr>
-                        <tr>
-                            <td>CSV Column Mapping</td>
-                            <td style="text-align:center;">❌</td>
-                            <td style="text-align:center;">✅</td>
-                            <td style="text-align:center;">✅</td>
-                        </tr>
-                        <tr>
-                            <td>AI WhatsApp Assistant</td>
-                            <td style="text-align:center;">❌</td>
-                            <td style="text-align:center;">❌</td>
-                            <td style="text-align:center;">✅</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        
-            <!-- Admin-only: plan upgrade -->
-            {% if is_admin_view %}
-            <form method="POST" action="/admin/store/{{ store.id }}/change-plan"
-                  style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <select name="plan" style="padding:10px 14px; border:1.5px solid var(--border);
-                        border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif;
-                        background:#fafafa; outline:none; min-width:140px;">
-                    <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
-                    <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
-                    <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
-                </select>
-                <button type="submit" class="btn"
-                        style="width:auto; padding:10px 20px; font-size:14px;">
-                    Change Plan ⚡
-                </button>
-            </form>
-            {% endif %}
-        </div>
-
-        <div class="section">
-            <h2>📊 Performance Charts</h2>
-            {% if not plan_features.charts %}
-            <p class="empty">Charts are available on Growth and Pro plans.</p>
-            {% elif trend_labels %}
-            <div class="chart-grid">
-                <div class="chart-card">
-                    <h3>Revenue vs Profit (Last 7 Days)</h3>
-                    <div class="chart-wrap">
-                        <canvas id="trendChart"></canvas>
-                    </div>
-                </div>
-                <div class="chart-card">
-                    <h3>Category Revenue Share</h3>
-                    <div class="chart-wrap">
-                        <canvas id="categoryChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <p class="empty">Not enough data to render charts yet.</p>
-            {% endif %}
-        </div>
-
-        <!-- TOP PRODUCTS: mobile cards / desktop table (768px) -->
-        <div class="section">
-            <h2>🔥 Top Products — Last 7 Days</h2>
-            {% if top_products %}
-            <div class="only-mobile">
-                <div class="data-list">
-                    {% for p in top_products %}
-                    <div class="data-card">
-                        <div>
-                            <div class="name">{{ p.product_name | title }}</div>
-                            <div class="sub">{{ p.category | title if p.category else 'Uncategorized' }}</div>
-                        </div>
-                        <div class="amount">
-                            ₹{{ p.total_revenue }}
-                            <span class="units">{{ p.total_units | int }} units</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            <div class="only-desktop">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Product</th>
-                                <th>Category</th>
-                                <th>Units</th>
-                                <th>Revenue</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for p in top_products %}
-                            <tr>
-                                <td>{{ p.product_name | title }}</td>
-                                <td>{{ p.category | title if p.category else 'Uncategorized' }}</td>
-                                <td>{{ p.total_units | int }}</td>
-                                <td>₹{{ p.total_revenue }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <p class="empty">No sales data yet.</p>
-            {% endif %}
-        </div>
-
-        <!-- DAILY TREND -->
-        <div class="section">
-            <h2>📅 Daily Sales — Last 7 Days</h2>
-            {% if daily_trend %}
-            <div class="only-mobile">
-                {% for d in daily_trend %}
-                <div class="row-card">
-                    <div class="row-card-title">{{ d.sale_date }}</div>
-                    <div class="kv"><span class="k">Revenue</span><span class="v">₹{{ d.revenue }}</span></div>
-                    <div class="kv"><span class="k">Profit</span><span class="v">₹{{ d.profit }}</span></div>
-                </div>
-                {% endfor %}
-            </div>
-            <div class="only-desktop">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Revenue</th>
-                                <th>Profit</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for d in daily_trend %}
-                            <tr>
-                                <td>{{ d.sale_date }}</td>
-                                <td>₹{{ d.revenue }}</td>
-                                <td>₹{{ d.profit }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <p style="color:#888; font-size:14px;">No data yet.</p>
-            {% endif %}
-        </div>
-
-        <!-- INVENTORY ALERTS -->
-        <div class="section">
-            <h2>⚠️ Inventory Alerts</h2>
-            {% if low_stock %}
-            <div class="only-mobile">
-                {% for item in low_stock %}
-                {% if item.closing_stock is not none and item.closing_stock < 10 %}
-                <div class="row-card">
-                    <div class="row-card-title">{{ item.product_name | title }}</div>
-                    <div class="kv"><span class="k">Stock left</span><span class="v">{{ item.closing_stock | int }}</span></div>
-                    <div class="kv"><span class="k">Status</span><span class="v sans">
-                        {% if item.closing_stock == 0 %}
-                        <span class="badge red">Out of Stock</span>
-                        {% elif item.closing_stock < 5 %}
-                        <span class="badge red">Critical Low</span>
-                        {% else %}
-                        <span class="badge yellow">Low Stock</span>
-                        {% endif %}
-                    </span></div>
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-            <div class="only-desktop">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Product</th>
-                                <th>Stock Left</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in low_stock %}
-                            {% if item.closing_stock is not none and item.closing_stock < 10 %}
-                            <tr>
-                                <td>{{ item.product_name | title }}</td>
-                                <td>{{ item.closing_stock | int }}</td>
-                                <td>
-                                    {% if item.closing_stock == 0 %}
-                                    <span class="badge red">Out of Stock</span>
-                                    {% elif item.closing_stock < 5 %}
-                                    <span class="badge red">Critical Low</span>
-                                    {% else %}
-                                    <span class="badge yellow">Low Stock</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endif %}
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <p style="color:#888; font-size:14px;">All stocks are healthy ✅</p>
-            {% endif %}
-        </div>
-
-        <!-- DEAD STOCK -->
-        <div class="section">
-            <h2>😴 Dead Stock (not sold in 14+ days)</h2>
-            {% if dead_stock %}
-            <div class="only-mobile">
-                {% for item in dead_stock %}
-                <div class="row-card">
-                    <div class="row-card-title">{{ item.product_name | title }}</div>
-                    <div class="kv"><span class="k">Last sold</span><span class="v sans">{{ item.last_sold }}</span></div>
-                    <div class="kv"><span class="k">Days idle</span><span class="v sans"><span class="badge grey">{{ item.days_since_sold }} days</span></span></div>
-                </div>
-                {% endfor %}
-            </div>
-            <div class="only-desktop">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Product</th>
-                                <th>Last Sold</th>
-                                <th>Days Idle</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in dead_stock %}
-                            <tr>
-                                <td>{{ item.product_name | title }}</td>
-                                <td>{{ item.last_sold }}</td>
-                                <td>
-                                    <span class="badge grey">
-                                        {{ item.days_since_sold }} days
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <p style="color:#888; font-size:14px;">No dead stock 🎉</p>
-            {% endif %}
-        </div>
-
-        <!-- UPLOAD HISTORY -->
-        <div class="section">
-            <h2>📁 Upload History</h2>
-            {% if uploads %}
-            <div class="only-mobile">
-                {% for u in uploads %}
-                <div class="row-card">
-                    <div class="row-card-title">{{ u.file_name }}</div>
-                    <div class="kv"><span class="k">Rows</span><span class="v">{{ u.rows_processed }}</span></div>
-                    <div class="kv"><span class="k">Status</span><span class="v sans">
-                        {% if u.status == 'success' %}
-                        <span class="badge green">Success</span>
-                        {% else %}
-                        <span class="badge yellow">Partial</span>
-                        {% endif %}
-                    </span></div>
-                    <div class="kv"><span class="k">Uploaded</span><span class="v sans">{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</span></div>
-                </div>
-                {% endfor %}
-            </div>
-            <div class="only-desktop">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>File</th>
-                                <th>Rows Processed</th>
-                                <th>Status</th>
-                                <th>Uploaded At</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for u in uploads %}
-                            <tr>
-                                <td>{{ u.file_name }}</td>
-                                <td>{{ u.rows_processed }}</td>
-                                <td>
-                                    {% if u.status == 'success' %}
-                                    <span class="badge green">Success</span>
-                                    {% else %}
-                                    <span class="badge yellow">Partial</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ u.uploaded_at.strftime('%d %b %Y %I:%M %p') }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% else %}
-            <p style="color:#888; font-size:14px;">No uploads yet.</p>
-            {% endif %}
-        </div>
-
-    </div>
-    <!-- FILE UPLOAD SECTION -->
-    <div class="section">
-        <h2>📁 Upload Sales File</h2>
-
-        {% if request.query_params.get('success') %}
-        <div class="info">✅ {{ request.query_params.get('success') }}</div>
-        {% endif %}
-
-        {% if request.query_params.get('error') %}
-        <div class="error">❌ {{ request.query_params.get('error') }}</div>
-        {% endif %}
-
-        <p style="color:#666; font-size:14px; margin-bottom:16px;">
-            Upload your Excel or CSV file. Make sure it has these columns:<br>
-            <!-- NEW -->
-            <code style="background:#f5f5f5; padding:4px 8px; border-radius:4px; font-size:13px;">
-                <strong>Required:</strong> product_name, quantity_sold, selling_price, purchase_price, sale_date<br>
-                <strong>Optional:</strong> category, opening_stock, closing_stock
-            </code>
-        </p>
-        <p style="margin:0 0 12px;">
-            <a href="/demo/sample-file" class="back-link">Download sample file</a>
-        </p>
-
-        <div style="margin:0 0 12px;">
-            <h3 style="font-size:13px; margin-bottom:4px;">CSV Column Mapping</h3>
-<p style="font-size:12px; color:var(--muted); margin-bottom:10px;">
-    If your CSV uses different column names, map them here so StoreIQ can read your file correctly.
-</p>
-
-<!-- Column reference table -->
-<div style="background:var(--bg); border-radius:10px; padding:12px; margin-bottom:14px; font-size:12px;">
-    <div style="font-weight:600; margin-bottom:8px; font-size:12px;">📋 Expected Columns</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+    <!-- HEADER -->
+    <div class="dashboard-header">
         <div>
-            <div style="color:var(--muted); font-size:11px; font-weight:600; margin-bottom:4px;">REQUIRED</div>
-            {% for col in ['product_name','quantity_sold','selling_price','purchase_price','sale_date'] %}
-            <div style="background:var(--red-soft); color:#c62828; border-radius:6px; padding:3px 8px; margin-bottom:3px; font-family:'DM Mono',monospace; font-size:11px;">{{ col }}</div>
-            {% endfor %}
+            <a href="/admin" class="back-link">← Admin</a>
+            <h1>🏪 {{ store.shop_name.replace('_', ' ') | title }}</h1>
+            <span>{{ store.store_type | title }} — {{ store.plan | title }} Plan</span>
         </div>
-        <div>
-            <div style="color:var(--muted); font-size:11px; font-weight:600; margin-bottom:4px;">OPTIONAL</div>
-            {% for col in ['category','opening_stock','closing_stock'] %}
-            <div style="background:var(--green-soft); color:#2e7d32; border-radius:6px; padding:3px 8px; margin-bottom:3px; font-family:'DM Mono',monospace; font-size:11px;">{{ col }}</div>
-            {% endfor %}
-        </div>
+        <a href="/logout" class="logout">Logout</a>
     </div>
-</div>
 
-{% if plan_features.csv_mapping %}
-<form method="POST" action="/store/{{ store.id }}/column-mapping" class="form-grid">
-    <div class="form-group">
-        <label>Your CSV Column Name</label>
-        <input type="text" name="source_column" placeholder="e.g. qty_sold, items_sold, units" required />
-        <p style="font-size:11px; color:var(--muted); margin-top:4px;">The column name as it appears in your file</p>
-    </div>
-    <div class="form-group">
-        <label>Maps To (StoreIQ Column)</label>
-        <select name="target_column" required style="width:100%; padding:12px 16px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; background:#fafafa; outline:none;">
-            <option disabled value="">— Required columns —</option>
-            <option value="product_name">product_name</option>
-            <option value="quantity_sold">quantity_sold</option>
-            <option value="selling_price">selling_price</option>
-            <option value="purchase_price">purchase_price</option>
-            <option value="sale_date">sale_date</option>
-            <option disabled value="">— Optional columns —</option>
-            <option value="category">category</option>
-            <option value="opening_stock">opening_stock</option>
-            <option value="closing_stock">closing_stock</option>
-        </select>
-        <p style="font-size:11px; color:var(--muted); margin-top:4px;">The StoreIQ column it should be treated as</p>
-    </div>
-    <button type="submit" class="btn" style="max-width:220px;">Save Mapping</button>
-</form>
-            {% if mapping_rows %}
-            <div class="data-list" style="margin-top:10px;">
-                {% for m in mapping_rows %}
-                <div class="data-card">
-                    <div>
-                        <div class="name">{{ m.source_column }}</div>
-                        <div class="sub">→ {{ m.target_column }}</div>
-                    </div>
-                    <form method="POST" action="/store/{{ store.id }}/column-mapping/delete">
-                        <input type="hidden" name="source_column" value="{{ m.source_column }}" />
-                        <button type="submit" class="restore-btn">Remove</button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% else %}
-            <p class="empty" style="padding:10px;">CSV mapping templates are available on Growth and Pro plans.</p>
-            {% endif %}
+    <!-- TIME FILTERS -->
+    <div class="section" style="padding:12px 16px;">
+        <div class="filter-bar">
+            <a href="?period=7d"  class="filter-btn {% if period == '7d'  %}active{% endif %}">7 Days</a>
+            <a href="?period=30d" class="filter-btn {% if period == '30d' %}active{% endif %}">30 Days</a>
+            <a href="?period=90d" class="filter-btn {% if period == '90d' %}active{% endif %}">90 Days</a>
+            <a href="?period=1y"  class="filter-btn {% if period == '1y'  %}active{% endif %}">1 Year</a>
         </div>
-        {% if is_admin_view %}
-        <form method="POST" action="/admin/store/{{ store.id }}/load-demo-data" style="margin:0 0 12px;">
-            <button type="submit" class="btn" style="max-width:240px;">
-                Load Demo Data (7 days)
+        <form method="GET" action="/dashboard" style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+            <input type="hidden" name="period" value="custom">
+            <input type="date" name="start_date" value="{{ start_date or '' }}"
+                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+            <input type="date" name="end_date" value="{{ end_date or '' }}"
+                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+            <button type="submit" class="btn" style="width:auto; padding:8px 16px; margin:0;">
+                Apply
             </button>
         </form>
-        {% endif %}
+    </div>
 
-        <form action="/upload-file?store_id={{ store.id }}" method="POST" enctype="multipart/form-data">
+    <!-- SUCCESS/ERROR -->
+    {% if request.query_params.get('success') %}
+    <div class="info">✅ {{ request.query_params.get('success') }}</div>
+    {% endif %}
+    {% if request.query_params.get('error') %}
+    <div class="error">❌ {{ request.query_params.get('error') }}</div>
+    {% endif %}
+
+    <!-- STAT CARDS -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="label">💰 Revenue</div>
+            <div class="value green">₹{{ summary.total_revenue or 0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📈 Profit</div>
+            <div class="value green">₹{{ summary.total_profit or 0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📊 Margin</div>
+            <div class="value blue">{{ summary.margin_pct or 0 }}%</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📦 Units</div>
+            <div class="value">{{ summary.total_units or 0 }}</div>
+        </div>
+    </div>
+
+    <!-- INTERACTIVE CHART -->
+    <div class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 style="margin:0;">📈 Performance Chart</h2>
+            <div style="display:flex; gap:6px;">
+                <button onclick="toggleMetric('revenue')"
+                        id="btn-revenue"
+                        class="chart-btn active">Revenue</button>
+                <button onclick="toggleMetric('profit')"
+                        id="btn-profit"
+                        class="chart-btn">Profit</button>
+                <button onclick="toggleMetric('units')"
+                        id="btn-units"
+                        class="chart-btn">Units</button>
+            </div>
+        </div>
+        <canvas id="performanceChart" height="200"></canvas>
+        <p style="font-size:11px; color:var(--muted); margin-top:8px; text-align:center;">
+            Pinch to zoom • Drag to pan • Double tap to reset
+        </p>
+    </div>
+
+    <!-- CATEGORY BREAKDOWN -->
+    <div class="section">
+        <h2>🗂 Category Breakdown</h2>
+        {% if categories %}
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:center;">
+            <canvas id="categoryChart"></canvas>
+            <div class="data-list">
+                {% for c in categories %}
+                <div class="data-card" style="cursor:pointer"
+                     onclick="drillCategory('{{ c.category }}')">
+                    <div>
+                        <div class="name">{{ c.category | title }}</div>
+                        <div class="sub">{{ c.units | int }} units</div>
+                    </div>
+                    <div class="amount">₹{{ c.revenue }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p class="empty">No data yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- TOP PRODUCTS -->
+    <div class="section" id="products-section">
+        <h2>🔥 Top Products</h2>
+        {% if top_products %}
+        <div class="data-list">
+            {% for p in top_products %}
+            <div class="data-card">
+                <div>
+                    <div class="name">{{ p.product_name | title }}</div>
+                    <div class="sub">
+                        <span class="badge grey">{{ p.category | title if p.category else 'General' }}</span>
+                    </div>
+                </div>
+                <div class="amount">
+                    ₹{{ p.total_revenue }}
+                    <span class="units">{{ p.total_units | int }} units • ₹{{ p.total_profit }} profit</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No sales data yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- INVENTORY ALERTS -->
+    <div class="section">
+        <h2>⚠️ Inventory Alerts</h2>
+        {% set low_items = low_stock | selectattr('closing_stock', 'lt', 10) | list %}
+        {% if low_items %}
+        <div class="data-list">
+            {% for item in low_items %}
+            {% if item.closing_stock is not none and item.closing_stock < 10 %}
+            <div class="data-card">
+                <div>
+                    <div class="name">{{ item.product_name | title }}</div>
+                    <div class="sub">{{ item.closing_stock | int }} units left</div>
+                </div>
+                {% if item.closing_stock == 0 %}
+                <span class="badge red">Out of Stock</span>
+                {% elif item.closing_stock < 5 %}
+                <span class="badge red">Critical</span>
+                {% else %}
+                <span class="badge yellow">Low</span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">All stocks healthy ✅</p>
+        {% endif %}
+    </div>
+
+    <!-- DEAD STOCK -->
+    <div class="section">
+        <h2>😴 Dead Stock</h2>
+        {% if dead_stock %}
+        <div class="data-list">
+            {% for item in dead_stock %}
+            <div class="data-card">
+                <div>
+                    <div class="name">{{ item.product_name | title }}</div>
+                    <div class="sub">Last sold: {{ item.last_sold }}</div>
+                </div>
+                <span class="badge grey">{{ item.days_since_sold }}d idle</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No dead stock 🎉</p>
+        {% endif %}
+    </div>
+
+    <!-- UPLOAD FILE -->
+    <div class="section">
+        <h2>📁 Upload Sales File</h2>
+        <p style="color:#666; font-size:13px; margin-bottom:12px;">
+            Upload Excel or CSV. Map your columns below.
+        </p>
+        <form action="/upload-file?store_id={{ store.id }}"
+              method="POST" enctype="multipart/form-data"
+              id="uploadForm">
             <div class="form-group">
                 <label>Choose File (.xlsx or .csv)</label>
                 <input type="file" name="file"
                        accept=".xlsx,.xls,.csv"
-                       required
-                       class="file-input" />
+                       required class="file-input"
+                       onchange="previewColumns(this)" />
             </div>
-            <button type="submit" class="btn" style="max-width:200px;">
-                Upload File 📤
+
+            <!-- Column Mapping -->
+            <div id="column-mapping" style="display:none;">
+                <p style="font-size:13px; font-weight:600; margin-bottom:10px;">
+                    Map your columns to required fields:
+                </p>
+                <div class="form-grid">
+                    {% for field in ['product_name','quantity_sold','selling_price','purchase_price','sale_date'] %}
+                    <div class="form-group">
+                        <label>{{ field.replace('_',' ') | title }} *</label>
+                        <select name="map_{{ field }}" required
+                                style="width:100%; padding:10px; border:1.5px solid var(--border);
+                                       border-radius:8px; font-size:14px;">
+                            <option value="">Select column...</option>
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn" style="max-width:180px;">
+                Upload 📤
             </button>
         </form>
     </div>
 
-    <!-- MANUAL ENTRY SECTION -->
+    <!-- MANUAL ENTRY -->
     <div class="section">
         <h2>➕ Add Sale Manually</h2>
-        <p style="color:#666; font-size:14px; margin-bottom:16px;">
-            Add one sale entry at a time
-        </p>
-
         <form action="/add-sale?store_id={{ store.id }}" method="POST">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-grid">
                 <div class="form-group">
-                    <label>Date</label>
+                    <label>Date *</label>
                     <input type="date" name="sale_date"
-                           required
-                           value="{{ today }}" />
+                           required value="{{ today }}" />
                 </div>
                 <div class="form-group">
-                    <label>Product Name</label>
+                    <label>Product Name *</label>
                     <input type="text" name="product_name"
                            placeholder="Amul Butter" required />
                 </div>
@@ -522,12 +253,12 @@
                            placeholder="dairy" />
                 </div>
                 <div class="form-group">
-                    <label>Quantity Sold</label>
+                    <label>Quantity Sold *</label>
                     <input type="number" name="quantity_sold"
                            placeholder="10" step="0.01" required />
                 </div>
                 <div class="form-group">
-                    <label>Selling Price (₹)</label>
+                    <label>Selling Price (₹) *</label>
                     <input type="number" name="selling_price"
                            placeholder="60" step="0.01" required />
                 </div>
@@ -547,90 +278,244 @@
                            placeholder="10" step="0.01" />
                 </div>
             </div>
-            <button type="submit" class="btn" style="max-width:200px; margin-top:8px;">
+            <button type="submit" class="btn" style="max-width:180px; margin-top:4px;">
                 Add Sale ➕
             </button>
         </form>
     </div>
 
-    {% if plan_features.charts and trend_labels %}
-    <script id="trend-labels" type="application/json">{{ trend_labels | tojson }}</script>
-    <script id="trend-revenue" type="application/json">{{ trend_revenue | tojson }}</script>
-    <script id="trend-profit" type="application/json">{{ trend_profit | tojson }}</script>
-    <script id="category-labels" type="application/json">{{ category_labels | tojson }}</script>
-    <script id="category-revenue" type="application/json">{{ category_revenue | tojson }}</script>
-    <script>
-        const trendLabels = JSON.parse(document.getElementById('trend-labels').textContent);
-        const trendRevenue = JSON.parse(document.getElementById('trend-revenue').textContent);
-        const trendProfit = JSON.parse(document.getElementById('trend-profit').textContent);
-        const categoryLabels = JSON.parse(document.getElementById('category-labels').textContent);
-        const categoryRevenue = JSON.parse(document.getElementById('category-revenue').textContent);
+    <!-- UPLOAD HISTORY -->
+    <div class="section">
+        <h2>📁 Upload History</h2>
+        {% if uploads %}
+        <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Rows</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in uploads %}
+                <tr>
+                    <td>{{ u.file_name }}</td>
+                    <td>{{ u.rows_processed }}</td>
+                    <td>
+                        {% if u.status == 'success' %}
+                        <span class="badge green">Success</span>
+                        {% else %}
+                        <span class="badge yellow">Partial</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ u.uploaded_at.strftime('%d %b %I:%M %p') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="empty">No uploads yet.</p>
+        {% endif %}
+    </div>
 
-        const trendCtx = document.getElementById('trendChart');
-        if (trendCtx) {
-            new Chart(trendCtx, {
-                type: 'line',
-                data: {
-                    labels: trendLabels,
-                    datasets: [
-                        {
-                            label: 'Revenue',
-                            data: trendRevenue,
-                            borderColor: '#1565c0',
-                            backgroundColor: 'rgba(21,101,192,0.12)',
-                            tension: 0.25,
-                            fill: true
-                        },
-                        {
-                            label: 'Profit',
-                            data: trendProfit,
-                            borderColor: '#00a045',
-                            backgroundColor: 'rgba(0,160,69,0.12)',
-                            tension: 0.25,
-                            fill: true
-                        }
-                    ]
+    <!-- PLAN INFO — BOTTOM -->
+    <div class="section">
+        <h2>📋 Your Plan</h2>
+        <div class="data-card" style="margin-bottom:12px;">
+            <div>
+                <div class="name">Current Plan</div>
+                <div class="sub">{{ store.store_type | title }} Store</div>
+            </div>
+            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+                {{ store.plan | title }}
+            </span>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <p style="font-size:13px; color:var(--muted); margin-bottom:8px;">
+                Want to upgrade? Send a request to admin.
+            </p>
+            <form action="/request-plan-change" method="POST">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <select name="requested_plan"
+                            style="padding:10px; border:1.5px solid var(--border);
+                                   border-radius:8px; font-size:14px; flex:1;">
+                        <option value="starter">Starter — ₹499/month</option>
+                        <option value="growth">Growth — ₹799/month</option>
+                        <option value="pro">Pro — ₹1,299/month</option>
+                    </select>
+                    <button type="submit" class="btn"
+                            style="width:auto; padding:10px 16px; margin:0;">
+                        Request Change
+                    </button>
+                </div>
+                <input type="text" name="note"
+                       placeholder="Optional note to admin"
+                       style="margin-top:8px; width:100%; padding:10px;
+                              border:1.5px solid var(--border); border-radius:8px;
+                              font-size:14px;" />
+            </form>
+        </div>
+
+        {% if upgrade_requests %}
+        {% set req = upgrade_requests[0] %}
+        <div class="info" style="font-size:13px;">
+            ⏳ Plan change request to <strong>{{ req.requested_plan | title }}</strong>
+            is <strong>{{ req.status }}</strong>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+// ── Chart Data ──
+const labels  = {{ daily_trend | map(attribute='sale_date') | list | tojson }};
+const revenue = {{ daily_trend | map(attribute='revenue')   | list | tojson }};
+const profit  = {{ daily_trend | map(attribute='profit')    | list | tojson }};
+const units   = {{ daily_trend | map(attribute='units')     | list | tojson }};
+
+const ctx = document.getElementById('performanceChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Revenue (₹)',
+            data: revenue,
+            borderColor: '#00c853',
+            backgroundColor: 'rgba(0,200,83,0.08)',
+            borderWidth: 2,
+            pointRadius: 3,
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            zoom: {
+                zoom: {
+                    wheel:  { enabled: true },
+                    pinch:  { enabled: true },
+                    mode:   'x'
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        }
-                    }
+                pan: {
+                    enabled: true,
+                    mode:    'x'
                 }
-            });
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: v => '₹' + v.toLocaleString('en-IN')
+                }
+            }
+        }
+    }
+});
+
+function toggleMetric(metric) {
+    const map = {
+        revenue: { data: revenue, label: 'Revenue (₹)', color: '#00c853' },
+        profit:  { data: profit,  label: 'Profit (₹)',  color: '#1565c0' },
+        units:   { data: units,   label: 'Units Sold',  color: '#f9a825' }
+    };
+    const m = map[metric];
+    chart.data.datasets[0].data         = m.data;
+    chart.data.datasets[0].label        = m.label;
+    chart.data.datasets[0].borderColor  = m.color;
+    chart.data.datasets[0].backgroundColor = m.color + '15';
+    chart.update();
+
+    document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-' + metric).classList.add('active');
+}
+
+// ── Category Donut Chart ──
+const catLabels = {{ categories | map(attribute='category') | list | tojson }};
+const catData   = {{ categories | map(attribute='revenue')  | list | tojson }};
+
+const catCtx = document.getElementById('categoryChart');
+if (catCtx && catLabels.length > 0) {
+    new Chart(catCtx, {
+        type: 'doughnut',
+        data: {
+            labels: catLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+            datasets: [{
+                data: catData,
+                backgroundColor: [
+                    '#00c853','#1565c0','#f9a825',
+                    '#e53935','#7b1fa2','#00838f',
+                    '#558b2f','#e65100'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } }
+            }
+        }
+    });
+}
+
+// ── Column Mapping Preview ──
+function previewColumns(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        let columns = [];
+
+        if (file.name.endsWith('.csv')) {
+            const firstLine = text.split('\n')[0];
+            columns = firstLine.split(',').map(c => c.trim().replace(/"/g, ''));
         }
 
-        const categoryCtx = document.getElementById('categoryChart');
-        if (categoryCtx && categoryLabels.length > 0) {
-            new Chart(categoryCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: categoryLabels,
-                    datasets: [
-                        {
-                            data: categoryRevenue,
-                            backgroundColor: [
-                                '#1565c0', '#00a045', '#f9a825', '#8e24aa',
-                                '#ef6c00', '#00838f', '#6d4c41', '#c62828'
-                            ]
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        }
-                    }
-                }
+        if (columns.length > 0) {
+            const mapping = document.getElementById('column-mapping');
+            mapping.style.display = 'block';
+
+            const selects = mapping.querySelectorAll('select');
+            selects.forEach(select => {
+                const currentVal = select.value;
+                while (select.options.length > 1) select.remove(1);
+                columns.forEach(col => {
+                    const opt = new Option(col, col);
+                    select.add(opt);
+                });
+
+                // Auto-match by name
+                const fieldName = select.name.replace('map_', '');
+                const match = columns.find(c =>
+                    c.toLowerCase().replace(/\s/g,'_') === fieldName
+                );
+                if (match) select.value = match;
             });
         }
-    </script>
-    {% endif %}
+    };
+    reader.readAsText(file);
+}
+
+// ── Category Drilldown ──
+function drillCategory(category) {
+    const section = document.getElementById('products-section');
+    section.scrollIntoView({ behavior: 'smooth' });
+    section.style.border = '2px solid var(--green)';
+    setTimeout(() => section.style.border = '', 2000);
+}
+</script>
 </body>
 </html>

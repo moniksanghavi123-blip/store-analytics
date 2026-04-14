@@ -51,3 +51,62 @@ def get_store_by_name(shop_name):
         (shop_name,)
     )
     return results[0] if results else None
+
+def table_exists(table_name):
+    """Check if a table exists in the database"""
+    results = run_query('''
+        select exists (
+            select from information_schema.tables
+            where table_name = %s
+        ) as exists
+    ''', (table_name,))
+    return results[0]['exists'] if results else False
+
+@app.post("/request-plan-change")
+def request_plan_change(
+    request: Request,
+    requested_plan: str = Form(...),
+    note: str = Form("")
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    store = get_store_by_phone_number(phone)
+    if not store:
+        return RedirectResponse(url="/login", status_code=302)
+
+    run_query('''
+        insert into plan_requests
+        (store_id, current_plan, requested_plan, note)
+        values (%s, %s, %s, %s)
+    ''', (store['id'], store['plan'], requested_plan, note),
+    fetch=False)
+
+    return RedirectResponse(
+        url="/dashboard?success=Plan+change+request+sent+to+admin",
+        status_code=302
+    )
+
+@app.post("/admin/update-plan")
+def update_plan(
+    request: Request,
+    store_id: int = Form(...),
+    new_plan: str = Form(...),
+    request_id: int = Form(None)
+):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    run_query('''
+        update stores set plan = %s where id = %s
+    ''', (new_plan, store_id), fetch=False)
+
+    if request_id:
+        run_query('''
+            update plan_requests set status = 'approved'
+            where id = %s
+        ''', (request_id,), fetch=False)
+
+    return RedirectResponse(url="/admin", status_code=302)

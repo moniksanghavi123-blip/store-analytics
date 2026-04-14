@@ -71,17 +71,17 @@
                     </div>
                     <div class="right">
                         <div class="revenue">₹{{ store.revenue_7d or 0 }}</div>
-                        <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
-                        <form method="POST" action="/admin/store/{{ store.id }}/delete"
-                              class="delete-form">
-                            <input type="text" name="confirm_text"
-                                   placeholder="DELETE {{ store.shop_name }}"
-                                   required
-                                   class="delete-input" />
-                            <button type="submit" class="delete-btn">
-                                Delete
-                            </button>
+                        <form action="/admin/update-plan" method="POST" style="margin-top:4px;">
+                            <input type="hidden" name="store_id" value="{{ store.id }}">
+                            <select name="new_plan" onchange="this.form.submit()"
+                                    style="font-size:12px; padding:4px 8px; border-radius:6px;
+                                           border:1px solid var(--border); color:var(--text);">
+                                <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
+                                <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
+                                <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
+                            </select>
                         </form>
+                        <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
                     </div>
                 </div>
                 {% endfor %}
