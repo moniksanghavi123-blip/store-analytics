@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
-from app.database import get_store_by_phone, run_query
+from app.database import get_store_by_phone, run_query, table_exists
 from app.processor import process_file, REQUIRED_COLUMNS, OPTIONAL_COLUMNS
 from app.whatsapp import send_store_summary, send_whatsapp_message
 from app.auth import send_otp, verify_otp, is_admin, get_store_by_phone_number
@@ -1142,3 +1142,57 @@ async def handle_ai_question(question, store):
         send_whatsapp_message(store['phone_number'],
             "Sorry, I couldn't process your question right now. "
             "Try again in a moment.")
+
+# ─────────────────────────────────────────
+# PLAN CHANGE REQUEST (Store Owner)
+# ─────────────────────────────────────────
+
+@app.post("/request-plan-change")
+def request_plan_change(
+    request: Request,
+    requested_plan: str = Form(...),
+    note: str = Form("")
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    store = get_store_by_phone_number(phone)
+    if not store:
+        return RedirectResponse(url="/login", status_code=302)
+
+    run_query('''
+        insert into plan_requests
+        (store_id, current_plan, requested_plan, note)
+        values (%s, %s, %s, %s)
+    ''', (store['id'], store['plan'], requested_plan, note),
+    fetch=False)
+
+    return RedirectResponse(
+        url="/dashboard?success=Plan+change+request+sent+to+admin",
+        status_code=302
+    )
+
+
+@app.post("/admin/update-plan")
+def update_plan(
+    request: Request,
+    store_id: int = Form(...),
+    new_plan: str = Form(...),
+    request_id: int = Form(None)
+):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    run_query('''
+        update stores set plan = %s where id = %s
+    ''', (new_plan, store_id), fetch=False)
+
+    if request_id:
+        run_query('''
+            update plan_requests set status = 'approved'
+            where id = %s
+        ''', (request_id,), fetch=False)
+
+    return RedirectResponse(url="/admin", status_code=302)
