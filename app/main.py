@@ -260,6 +260,13 @@ def dashboard(request: Request, period: str = "7d",
     trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
     trend_profit  = [float(d["profit"] or 0) for d in daily_trend]
     trend_units   = [float(d["units"] or 0) for d in daily_trend]
+    categories_clean = [
+        {"category": str(c["category"] or "general"),
+         "revenue": float(c["revenue"] or 0),
+         "profit":  float(c["profit"] or 0),
+         "units":   float(c["units"] or 0)}
+        for c in categories
+    ]
 
     # Plan upgrade requests
     upgrade_requests = run_query('''
@@ -283,9 +290,11 @@ def dashboard(request: Request, period: str = "7d",
             "trend_revenue":    trend_revenue,
             "trend_profit":     trend_profit,
             "trend_units":      trend_units,
-            "categories":       categories,
+            "categories":       categories_clean,
             "uploads":          uploads,
             "period":           period,
+            "start_date":       start_date,
+            "end_date":         end_date,
             "today":            date.today().isoformat(),
             "upgrade_requests": upgrade_requests
         }
@@ -351,18 +360,27 @@ def admin_dashboard(request: Request):
         '''
     )
 
+    pending_plan_requests = run_query('''
+        select pr.*, s.shop_name, s.phone_number
+        from plan_requests pr
+        join stores s on s.id = pr.store_id
+        where pr.status = 'pending'
+        order by pr.created_at desc
+    ''') if table_exists('plan_requests') else []
+
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
         context={
-            "stores":          stores,
-            "total_revenue":   total_revenue[0]['total'] if total_revenue else 0,
-            "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
-            "inactive_stores": inactive_stores,
-            "recent_uploads":  recent_uploads,
-            "deleted_stores":  deleted_stores,
-            "add_error":       None,
-            "add_success":     None
+            "stores":                stores,
+            "total_revenue":         total_revenue[0]['total'] if total_revenue else 0,
+            "total_uploads":         total_uploads[0]['total'] if total_uploads else 0,
+            "inactive_stores":       inactive_stores,
+            "recent_uploads":        recent_uploads,
+            "deleted_stores":        deleted_stores,
+            "pending_plan_requests": pending_plan_requests,
+            "add_error":             None,
+            "add_success":           None
         }
     )
 
@@ -446,23 +464,38 @@ def add_store(
         '''
     )
 
+    pending_plan_requests_add = run_query('''
+        select pr.*, s.shop_name, s.phone_number
+        from plan_requests pr
+        join stores s on s.id = pr.store_id
+        where pr.status = 'pending'
+        order by pr.created_at desc
+    ''') if table_exists('plan_requests') else []
+
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
         context={
-            "stores":          stores,
-            "total_revenue":   total_revenue[0]['total'] if total_revenue else 0,
-            "total_uploads":   total_uploads[0]['total'] if total_uploads else 0,
-            "inactive_stores": inactive_stores,
-            "recent_uploads":  recent_uploads,
-            "deleted_stores":  deleted_stores,
-            "add_error":       error,
-            "add_success":     success
+            "stores":                stores,
+            "total_revenue":         total_revenue[0]['total'] if total_revenue else 0,
+            "total_uploads":         total_uploads[0]['total'] if total_uploads else 0,
+            "inactive_stores":       inactive_stores,
+            "recent_uploads":        recent_uploads,
+            "deleted_stores":        deleted_stores,
+            "pending_plan_requests": pending_plan_requests_add,
+            "add_error":             error,
+            "add_success":           success
         }
     )
 
 @app.get("/admin/store/{store_id}")
-def admin_store_detail(request: Request, store_id: int):
+def admin_store_detail(
+    request: Request,
+    store_id: int,
+    period: str = "7d",
+    start_date: str = None,
+    end_date: str = None
+):
     phone = request.cookies.get("phone")
     if not phone or not is_admin(phone):
         return RedirectResponse(url="/login", status_code=302)
@@ -479,26 +512,36 @@ def admin_store_detail(request: Request, store_id: int):
     if not store:
         return RedirectResponse(url="/admin", status_code=302)
 
-    store        = store[0]
+    store         = store[0]
     plan_features = get_plan_features(store.get("plan"))
-    summary      = get_store_summary(store_id, days=7)
-    top_products = get_top_products(store_id, days=7, limit=5)
+    sd = start_date if start_date else None
+    ed = end_date if end_date else None
+
+    summary      = get_store_summary(store_id, period=period, start_date=sd, end_date=ed)
+    top_products = get_top_products(store_id, period=period, start_date=sd, end_date=ed, limit=5)
     low_stock    = get_low_stock(store_id)
     dead_stock   = get_dead_stock(store_id)
-    daily_trend  = get_daily_trend(store_id, days=7)
-    category_breakdown = get_category_breakdown(store_id, days=7)
+    daily_trend  = get_daily_trend(store_id, period=period, start_date=sd, end_date=ed)
+    categories   = get_category_breakdown(store_id, period=period, start_date=sd, end_date=ed)
+
     trend_labels  = [str(d["sale_date"]) for d in daily_trend]
     trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
     trend_profit  = [float(d["profit"] or 0) for d in daily_trend]
     trend_units   = [float(d["units"] or 0) for d in daily_trend]
-    category_labels = [str(c["category"] or "Uncategorized") for c in category_breakdown]
-    category_revenue = [float(c["revenue"] or 0) for c in category_breakdown]
+    categories_clean = [
+        {"category": str(c["category"] or "general"),
+         "revenue": float(c["revenue"] or 0),
+         "profit":  float(c["profit"] or 0),
+         "units":   float(c["units"] or 0)}
+        for c in categories
+    ]
+
     column_mapping = get_store_column_mapping(store_id)
     mapping_rows = [
         {"source_column": k, "target_column": v}
         for k, v in column_mapping.items()
     ]
-    uploads      = run_query('''
+    uploads = run_query('''
         select * from uploads
         where store_id = %s
         order by uploaded_at desc
@@ -509,25 +552,27 @@ def admin_store_detail(request: Request, store_id: int):
         request=request,
         name="dashboard.html",
         context={
-            "store":        store,
-            "summary":      summary,
-            "top_products": top_products,
-            "low_stock":    low_stock,
-            "dead_stock":   dead_stock,
-            "daily_trend":  daily_trend,
-            "category_breakdown": category_breakdown,
-            "trend_labels":  trend_labels,
-            "trend_revenue": trend_revenue,
-            "trend_profit":  trend_profit,
-            "trend_units":   trend_units,
-            "category_labels": category_labels,
-            "category_revenue": category_revenue,
-            "plan_features": plan_features,
-            "mapping_rows": mapping_rows,
+            "store":          store,
+            "summary":        summary,
+            "top_products":   top_products,
+            "low_stock":      low_stock,
+            "dead_stock":     dead_stock,
+            "daily_trend":    daily_trend,
+            "categories":     categories_clean,
+            "trend_labels":   trend_labels,
+            "trend_revenue":  trend_revenue,
+            "trend_profit":   trend_profit,
+            "trend_units":    trend_units,
+            "plan_features":  plan_features,
+            "mapping_rows":   mapping_rows,
             "target_columns": TARGET_COLUMNS,
-            "uploads":      uploads,
-            "today":        date.today().isoformat(),
-            "is_admin_view": True
+            "uploads":        uploads,
+            "period":         period,
+            "start_date":     start_date,
+            "end_date":       end_date,
+            "today":          date.today().isoformat(),
+            "upgrade_requests": [],
+            "is_admin_view":  True
         }
     )
 
@@ -804,6 +849,44 @@ def delete_column_mapping(
     )
 
 # ─────────────────────────────────────────
+# BULK COLUMN MAPPING (Admin)
+# ─────────────────────────────────────────
+
+@app.post("/store/{store_id}/column-mapping/bulk")
+async def save_bulk_column_mapping(request: Request, store_id: int):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    store_row = run_query("select id, plan from stores where id = %s", (store_id,))
+    if not store_row:
+        return RedirectResponse(url=f"/admin/store/{store_id}?error=Store+not+found", status_code=302)
+
+    form = await request.form()
+    ensure_column_mapping_support()
+    saved = 0
+    for field in TARGET_COLUMNS:
+        source = (form.get(f"src_{field}") or "").strip().lower().replace(" ", "_")
+        if source:
+            run_query(
+                '''
+                insert into store_column_mappings (store_id, source_column, target_column)
+                values (%s, %s, %s)
+                on conflict (store_id, source_column)
+                do update set target_column = excluded.target_column
+                ''',
+                (store_id, source, field),
+                fetch=False
+            )
+            saved += 1
+
+    return RedirectResponse(
+        url=f"/admin/store/{store_id}?success={saved}+column+mappings+saved",
+        status_code=302
+    )
+
+
+# ─────────────────────────────────────────
 # FILE UPLOAD FROM DASHBOARD
 # ─────────────────────────────────────────
 
@@ -832,6 +915,15 @@ async def upload_file(
 
     try:
         plan_features = get_plan_features(store.get("plan"))
+
+        # Read any one-time column mappings submitted in the form
+        form_data = await request.form()
+        form_mapping = {}
+        for field in TARGET_COLUMNS:
+            src = (form_data.get(f"mapping_{field}") or "").strip().lower().replace(" ", "_")
+            if src and src != field:
+                form_mapping[src] = field
+
         suffix = (os.path.splitext(file.filename or "")[1] or "").lower()
         if suffix not in ALLOWED_UPLOAD_EXTENSIONS:
             redirect_url = (
@@ -848,7 +940,8 @@ async def upload_file(
             tmp.write(content)
             tmp_path = tmp.name
 
-        mapping = get_store_column_mapping(store['id']) if plan_features["csv_mapping"] else None
+        saved_mapping = get_store_column_mapping(store['id']) if plan_features["csv_mapping"] else {}
+        mapping = {**saved_mapping, **form_mapping} if (saved_mapping or form_mapping) else None
         result = process_file(tmp_path, store['id'], column_mapping=mapping)
 
         run_query('''
@@ -1183,6 +1276,20 @@ def request_plan_change(
         url="/dashboard?success=Plan+change+request+sent+to+admin",
         status_code=302
     )
+
+
+@app.post("/admin/reject-plan-request")
+def reject_plan_request(request: Request, request_id: int = Form(...)):
+    phone = request.cookies.get("phone")
+    if not phone or not is_admin(phone):
+        return RedirectResponse(url="/login", status_code=302)
+
+    run_query(
+        "update plan_requests set status = 'rejected' where id = %s",
+        (request_id,),
+        fetch=False
+    )
+    return RedirectResponse(url="/admin?success=Plan+request+rejected", status_code=302)
 
 
 @app.post("/admin/update-plan")

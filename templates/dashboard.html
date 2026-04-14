@@ -6,8 +6,6 @@
     <title>StoreIQ — {{ store.shop_name | title }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs"></script>
 </head>
 <body>
 <div class="dashboard">
@@ -15,31 +13,13 @@
     <!-- HEADER -->
     <div class="dashboard-header">
         <div>
+            {% if is_admin_view %}
             <a href="/admin" class="back-link">← Admin</a>
+            {% endif %}
             <h1>🏪 {{ store.shop_name.replace('_', ' ') | title }}</h1>
             <span>{{ store.store_type | title }} — {{ store.plan | title }} Plan</span>
         </div>
         <a href="/logout" class="logout">Logout</a>
-    </div>
-
-    <!-- TIME FILTERS -->
-    <div class="section" style="padding:12px 16px;">
-        <div class="filter-bar">
-            <a href="?period=7d"  class="filter-btn {% if period == '7d'  %}active{% endif %}">7 Days</a>
-            <a href="?period=30d" class="filter-btn {% if period == '30d' %}active{% endif %}">30 Days</a>
-            <a href="?period=90d" class="filter-btn {% if period == '90d' %}active{% endif %}">90 Days</a>
-            <a href="?period=1y"  class="filter-btn {% if period == '1y'  %}active{% endif %}">1 Year</a>
-        </div>
-        <form method="GET" action="/dashboard" style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-            <input type="hidden" name="period" value="custom">
-            <input type="date" name="start_date" value="{{ start_date or '' }}"
-                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
-            <input type="date" name="end_date" value="{{ end_date or '' }}"
-                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
-            <button type="submit" class="btn" style="width:auto; padding:8px 16px; margin:0;">
-                Apply
-            </button>
-        </form>
     </div>
 
     <!-- SUCCESS/ERROR -->
@@ -49,6 +29,25 @@
     {% if request.query_params.get('error') %}
     <div class="error">❌ {{ request.query_params.get('error') }}</div>
     {% endif %}
+
+    <!-- TIME FILTERS -->
+    {% set base_url = "/admin/store/" + store.id|string if is_admin_view else "/dashboard" %}
+    <div class="section" style="padding:12px 16px;">
+        <div class="filter-bar">
+            <a href="{{ base_url }}?period=7d"  class="filter-btn {% if period == '7d'  %}active{% endif %}">7 Days</a>
+            <a href="{{ base_url }}?period=30d" class="filter-btn {% if period == '30d' %}active{% endif %}">30 Days</a>
+            <a href="{{ base_url }}?period=90d" class="filter-btn {% if period == '90d' %}active{% endif %}">3 Months</a>
+            <a href="{{ base_url }}?period=1y"  class="filter-btn {% if period == '1y'  %}active{% endif %}">1 Year</a>
+        </div>
+        <form method="GET" action="{{ base_url }}" style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+            <input type="hidden" name="period" value="custom">
+            <input type="date" name="start_date" value="{{ start_date or '' }}"
+                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+            <input type="date" name="end_date" value="{{ end_date or '' }}"
+                   style="padding:8px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+            <button type="submit" class="btn" style="width:auto; padding:8px 16px; margin:0;">Apply</button>
+        </form>
+    </div>
 
     <!-- STAT CARDS -->
     <div class="stats-grid">
@@ -70,26 +69,29 @@
         </div>
     </div>
 
-    <!-- INTERACTIVE CHART -->
+    <!-- PERFORMANCE CHART WITH DRILL-DOWN -->
     <div class="section">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h2 style="margin:0;">📈 Performance Chart</h2>
-            <div style="display:flex; gap:6px;">
-                <button onclick="toggleMetric('revenue')"
-                        id="btn-revenue"
-                        class="chart-btn active">Revenue</button>
-                <button onclick="toggleMetric('profit')"
-                        id="btn-profit"
-                        class="chart-btn">Profit</button>
-                <button onclick="toggleMetric('units')"
-                        id="btn-units"
-                        class="chart-btn">Units</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <h2 style="margin:0;">📈 Performance</h2>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button onclick="setMetric('revenue')" id="btn-revenue" class="chart-btn active">Revenue</button>
+                <button onclick="setMetric('profit')"  id="btn-profit"  class="chart-btn">Profit</button>
+                <button onclick="setMetric('units')"   id="btn-units"   class="chart-btn">Units</button>
             </div>
         </div>
+
+        <!-- Breadcrumb / drill controls -->
+        <div id="chart-breadcrumb" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); margin-bottom:10px; min-height:22px;">
+            <span id="breadcrumb-text"></span>
+            <button id="drill-back-btn" onclick="drillUp()"
+                    style="display:none; background:var(--blue-soft); color:var(--blue); border:none;
+                           border-radius:8px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer;">
+                ← Back
+            </button>
+            <span id="drill-hint" style="color:var(--muted); font-size:11px;"></span>
+        </div>
+
         <canvas id="performanceChart" height="200"></canvas>
-        <p style="font-size:11px; color:var(--muted); margin-top:8px; text-align:center;">
-            Pinch to zoom • Drag to pan • Double tap to reset
-        </p>
     </div>
 
     <!-- CATEGORY BREAKDOWN -->
@@ -100,8 +102,7 @@
             <canvas id="categoryChart"></canvas>
             <div class="data-list">
                 {% for c in categories %}
-                <div class="data-card" style="cursor:pointer"
-                     onclick="drillCategory('{{ c.category }}')">
+                <div class="data-card">
                     <div>
                         <div class="name">{{ c.category | title }}</div>
                         <div class="sub">{{ c.units | int }} units</div>
@@ -112,7 +113,7 @@
             </div>
         </div>
         {% else %}
-        <p class="empty">No data yet.</p>
+        <p class="empty">No category data yet.</p>
         {% endif %}
     </div>
 
@@ -131,7 +132,7 @@
                 </div>
                 <div class="amount">
                     ₹{{ p.total_revenue }}
-                    <span class="units">{{ p.total_units | int }} units • ₹{{ p.total_profit }} profit</span>
+                    <span class="units">{{ p.total_units | int }} units · ₹{{ p.total_profit }} profit</span>
                 </div>
             </div>
             {% endfor %}
@@ -194,39 +195,53 @@
     <div class="section">
         <h2>📁 Upload Sales File</h2>
         <p style="color:#666; font-size:13px; margin-bottom:12px;">
-            Upload Excel or CSV. Map your columns below.
+            Upload Excel (.xlsx) or CSV. Map your column headers below, then upload.
         </p>
         <form action="/upload-file?store_id={{ store.id }}"
-              method="POST" enctype="multipart/form-data"
-              id="uploadForm">
+              method="POST" enctype="multipart/form-data" id="uploadForm">
+
             <div class="form-group">
-                <label>Choose File (.xlsx or .csv)</label>
+                <label>Choose File (.xlsx, .xls or .csv)</label>
                 <input type="file" name="file"
                        accept=".xlsx,.xls,.csv"
                        required class="file-input"
-                       onchange="previewColumns(this)" />
+                       onchange="onFileSelected(this)" />
             </div>
 
-            <!-- Column Mapping -->
-            <div id="column-mapping" style="display:none;">
-                <p style="font-size:13px; font-weight:600; margin-bottom:10px;">
-                    Map your columns to required fields:
+            <!-- Column Mapping — always visible, 5 required fields -->
+            <div style="background:var(--bg); border-radius:10px; padding:14px; margin-bottom:12px;">
+                <p style="font-size:13px; font-weight:600; margin-bottom:4px; color:var(--text);">
+                    Column Mapping <span style="font-weight:400; color:var(--muted);">(type your file's column names)</span>
+                </p>
+                <p style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+                    If your file uses the exact names below, leave them as-is.
                 </p>
                 <div class="form-grid">
-                    {% for field in ['product_name','quantity_sold','selling_price','purchase_price','sale_date'] %}
-                    <div class="form-group">
-                        <label>{{ field.replace('_',' ') | title }} *</label>
-                        <select name="map_{{ field }}" required
-                                style="width:100%; padding:10px; border:1.5px solid var(--border);
-                                       border-radius:8px; font-size:14px;">
-                            <option value="">Select column...</option>
-                        </select>
+                    {% for field in ['product_name', 'quantity_sold', 'selling_price', 'purchase_price', 'sale_date'] %}
+                    <div class="form-group" style="margin-bottom:8px;">
+                        <label style="font-size:12px;">{{ field.replace('_',' ') | title }} *</label>
+                        <input type="text" name="col_{{ field }}"
+                               id="col_{{ field }}"
+                               value="{{ field }}"
+                               placeholder="{{ field }}"
+                               style="padding:8px 10px; font-size:13px; border:1.5px solid var(--border);
+                                      border-radius:8px; width:100%; background:white;" />
                     </div>
                     {% endfor %}
+                    <div class="form-group" style="margin-bottom:8px;">
+                        <label style="font-size:12px;">Category (optional)</label>
+                        <input type="text" name="col_category"
+                               id="col_category"
+                               value=""
+                               placeholder="category"
+                               style="padding:8px 10px; font-size:13px; border:1.5px solid var(--border);
+                                      border-radius:8px; width:100%; background:white;" />
+                    </div>
                 </div>
             </div>
 
-            <button type="submit" class="btn" style="max-width:180px;">
+            <button type="submit" onclick="return applyMappingBeforeUpload()"
+                    class="btn" style="max-width:180px;">
                 Upload 📤
             </button>
         </form>
@@ -239,50 +254,94 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label>Date *</label>
-                    <input type="date" name="sale_date"
-                           required value="{{ today }}" />
+                    <input type="date" name="sale_date" required value="{{ today }}" />
                 </div>
                 <div class="form-group">
                     <label>Product Name *</label>
-                    <input type="text" name="product_name"
-                           placeholder="Amul Butter" required />
+                    <input type="text" name="product_name" placeholder="Amul Butter" required />
                 </div>
                 <div class="form-group">
                     <label>Category</label>
-                    <input type="text" name="category"
-                           placeholder="dairy" />
+                    <input type="text" name="category" placeholder="dairy" />
                 </div>
                 <div class="form-group">
                     <label>Quantity Sold *</label>
-                    <input type="number" name="quantity_sold"
-                           placeholder="10" step="0.01" required />
+                    <input type="number" name="quantity_sold" placeholder="10" step="0.01" required />
                 </div>
                 <div class="form-group">
                     <label>Selling Price (₹) *</label>
-                    <input type="number" name="selling_price"
-                           placeholder="60" step="0.01" required />
+                    <input type="number" name="selling_price" placeholder="60" step="0.01" required />
                 </div>
                 <div class="form-group">
                     <label>Purchase Price (₹)</label>
-                    <input type="number" name="purchase_price"
-                           placeholder="52" step="0.01" />
+                    <input type="number" name="purchase_price" placeholder="52" step="0.01" />
                 </div>
                 <div class="form-group">
                     <label>Opening Stock</label>
-                    <input type="number" name="opening_stock"
-                           placeholder="20" step="0.01" />
+                    <input type="number" name="opening_stock" placeholder="20" />
                 </div>
                 <div class="form-group">
                     <label>Closing Stock</label>
-                    <input type="number" name="closing_stock"
-                           placeholder="10" step="0.01" />
+                    <input type="number" name="closing_stock" placeholder="10" />
                 </div>
             </div>
-            <button type="submit" class="btn" style="max-width:180px; margin-top:4px;">
-                Add Sale ➕
-            </button>
+            <button type="submit" class="btn" style="max-width:180px; margin-top:4px;">Add Sale ➕</button>
         </form>
     </div>
+
+    <!-- ADMIN: SAVED COLUMN MAPPING CONFIGURATION -->
+    {% if is_admin_view %}
+    <div class="section">
+        <h2>🗂 Saved Column Mapping</h2>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:12px;">
+            Set permanent column name mappings for this store. Applied automatically on every upload.
+        </p>
+        <form action="/store/{{ store.id }}/column-mapping/bulk" method="POST">
+            <div class="form-grid">
+                {% set required_fields = ['product_name', 'quantity_sold', 'selling_price', 'purchase_price', 'sale_date'] %}
+                {% for field in required_fields %}
+                {% set existing = mapping_rows | selectattr('target_column', 'equalto', field) | list %}
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label style="font-size:12px;">{{ field.replace('_',' ') | title }} *</label>
+                    <input type="text" name="src_{{ field }}"
+                           value="{{ existing[0].source_column if existing else '' }}"
+                           placeholder="Your CSV column name"
+                           style="padding:8px 10px; font-size:13px; border:1.5px solid var(--border);
+                                  border-radius:8px; width:100%; background:white;" />
+                </div>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn" style="max-width:200px; margin-top:8px;">
+                Save Mappings 💾
+            </button>
+        </form>
+
+        {% if mapping_rows %}
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+            <p style="font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:600;">ACTIVE MAPPINGS</p>
+            <div class="data-list" style="gap:6px;">
+                {% for m in mapping_rows %}
+                <div style="display:flex; justify-content:space-between; align-items:center;
+                            padding:8px 12px; background:var(--bg); border-radius:8px;">
+                    <span style="font-size:13px;">
+                        <code style="background:#eee; padding:2px 6px; border-radius:4px;">{{ m.source_column }}</code>
+                        <span style="color:var(--muted); margin:0 6px;">→</span>
+                        <strong>{{ m.target_column }}</strong>
+                    </span>
+                    <form action="/store/{{ store.id }}/column-mapping/delete" method="POST" style="margin:0;">
+                        <input type="hidden" name="source_column" value="{{ m.source_column }}">
+                        <button type="submit"
+                                style="background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; font-weight:600;">
+                            ✕
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <!-- UPLOAD HISTORY -->
     <div class="section">
@@ -292,10 +351,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>File</th>
-                    <th>Rows</th>
-                    <th>Status</th>
-                    <th>Time</th>
+                    <th>File</th><th>Rows</th><th>Status</th><th>Time</th>
                 </tr>
             </thead>
             <tbody>
@@ -334,6 +390,7 @@
             </span>
         </div>
 
+        {% if not is_admin_view %}
         <div style="margin-bottom:12px;">
             <p style="font-size:13px; color:var(--muted); margin-bottom:8px;">
                 Want to upgrade? Send a request to admin.
@@ -347,19 +404,16 @@
                         <option value="growth">Growth — ₹799/month</option>
                         <option value="pro">Pro — ₹1,299/month</option>
                     </select>
-                    <button type="submit" class="btn"
-                            style="width:auto; padding:10px 16px; margin:0;">
+                    <button type="submit" class="btn" style="width:auto; padding:10px 16px; margin:0;">
                         Request Change
                     </button>
                 </div>
                 <input type="text" name="note"
                        placeholder="Optional note to admin"
                        style="margin-top:8px; width:100%; padding:10px;
-                              border:1.5px solid var(--border); border-radius:8px;
-                              font-size:14px;" />
+                              border:1.5px solid var(--border); border-radius:8px; font-size:14px;" />
             </form>
         </div>
-
         {% if upgrade_requests %}
         {% set req = upgrade_requests[0] %}
         <div class="info" style="font-size:13px;">
@@ -367,82 +421,218 @@
             is <strong>{{ req.status }}</strong>
         </div>
         {% endif %}
+        {% endif %}
+
+        {% if is_admin_view %}
+        <div style="margin-top:8px;">
+            <p style="font-size:13px; color:var(--muted); margin-bottom:8px;">Change plan for this store:</p>
+            <form action="/admin/store/{{ store.id }}/change-plan" method="POST"
+                  style="display:flex; gap:8px; flex-wrap:wrap;">
+                <select name="plan"
+                        style="padding:10px; border:1.5px solid var(--border);
+                               border-radius:8px; font-size:14px; flex:1;">
+                    <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
+                    <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
+                    <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
+                </select>
+                <button type="submit" class="btn" style="width:auto; padding:10px 16px; margin:0;">
+                    Change Plan
+                </button>
+            </form>
+        </div>
+        {% endif %}
     </div>
 
 </div>
 
 <script>
-// ── Chart Data ──
-const labels  = {{ trend_labels  | tojson }};
-const revenue = {{ trend_revenue | tojson }};
-const profit  = {{ trend_profit  | tojson }};
-const units   = {{ trend_units   | tojson }};
+// ── Raw daily data from server ──
+const rawData = {
+    labels:  {{ trend_labels  | tojson }},
+    revenue: {{ trend_revenue | tojson }},
+    profit:  {{ trend_profit  | tojson }},
+    units:   {{ trend_units   | tojson }}
+};
+const currentPeriod = "{{ period }}";
 
+// ── Drill-down state ──
+let drillStack = [];
+let currentView = null;
+let currentMetric = 'revenue';
+
+const metricConfig = {
+    revenue: { label: 'Revenue (₹)', color: '#00c853', prefix: '₹' },
+    profit:  { label: 'Profit (₹)',  color: '#1565c0', prefix: '₹' },
+    units:   { label: 'Units Sold',  color: '#f9a825', prefix: '' }
+};
+
+// ── Aggregation helpers ──
+function aggregateBy(by) {
+    if (rawData.labels.length === 0) {
+        return { labels: [], keys: [], revenue: [], profit: [], units: [], level: by, canDrillDown: false };
+    }
+    const buckets = {};
+    rawData.labels.forEach((dateStr, i) => {
+        const d = new Date(dateStr);
+        let key, label;
+        if (by === 'month') {
+            key   = dateStr.slice(0, 7);
+            label = d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+        } else {
+            const dow = (d.getDay() + 6) % 7;
+            const ws  = new Date(d);
+            ws.setDate(d.getDate() - dow);
+            key   = ws.toISOString().slice(0, 10);
+            label = 'Wk ' + ws.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+        }
+        if (!buckets[key]) buckets[key] = { label, revenue: 0, profit: 0, units: 0 };
+        buckets[key].revenue += rawData.revenue[i];
+        buckets[key].profit  += rawData.profit[i];
+        buckets[key].units   += rawData.units[i];
+    });
+    const keys = Object.keys(buckets).sort();
+    return {
+        labels:  keys.map(k => buckets[k].label),
+        keys,
+        revenue: keys.map(k => buckets[k].revenue),
+        profit:  keys.map(k => buckets[k].profit),
+        units:   keys.map(k => buckets[k].units),
+        level: by,
+        canDrillDown: true
+    };
+}
+
+function getDefaultView() {
+    if (currentPeriod === '1y' || (currentPeriod === 'custom' && rawData.labels.length > 60)) {
+        return aggregateBy('month');
+    } else if (currentPeriod === '90d' || (currentPeriod === 'custom' && rawData.labels.length > 14)) {
+        return aggregateBy('week');
+    }
+    return {
+        labels:  rawData.labels,
+        keys:    rawData.labels,
+        revenue: rawData.revenue,
+        profit:  rawData.profit,
+        units:   rawData.units,
+        level: 'day',
+        canDrillDown: false
+    };
+}
+
+// ── Chart setup ──
 const ctx = document.getElementById('performanceChart').getContext('2d');
 const chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: labels,
-        datasets: [{
-            label: 'Revenue (₹)',
-            data: revenue,
-            borderColor: '#00c853',
-            backgroundColor: 'rgba(0,200,83,0.08)',
-            borderWidth: 2,
-            pointRadius: 3,
-            fill: true,
-            tension: 0.4
-        }]
-    },
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], borderRadius: 6 }] },
     options: {
         responsive: true,
         interaction: { mode: 'index', intersect: false },
-        plugins: {
-            legend: { display: false },
-            zoom: {
-                zoom: {
-                    wheel:  { enabled: true },
-                    pinch:  { enabled: true },
-                    mode:   'x'
-                },
-                pan: {
-                    enabled: true,
-                    mode:    'x'
-                }
-            }
+        onClick: (evt, elements) => {
+            if (elements.length > 0) drillDown(elements[0].index);
         },
+        plugins: { legend: { display: false } },
         scales: {
             y: {
                 beginAtZero: true,
-                ticks: {
-                    callback: v => '₹' + v.toLocaleString('en-IN')
-                }
+                ticks: { callback: v => metricConfig[currentMetric].prefix + v.toLocaleString('en-IN') }
             }
         }
     }
 });
 
-function toggleMetric(metric) {
-    const map = {
-        revenue: { data: revenue, label: 'Revenue (₹)', color: '#00c853' },
-        profit:  { data: profit,  label: 'Profit (₹)',  color: '#1565c0' },
-        units:   { data: units,   label: 'Units Sold',  color: '#f9a825' }
-    };
-    const m = map[metric];
-    chart.data.datasets[0].data         = m.data;
-    chart.data.datasets[0].label        = m.label;
-    chart.data.datasets[0].borderColor  = m.color;
-    chart.data.datasets[0].backgroundColor = m.color + '15';
-    chart.update();
+function renderChart() {
+    const v   = currentView;
+    const cfg = metricConfig[currentMetric];
+    const data = v[currentMetric];
+    const isLine = v.level === 'day' && v.labels.length <= 31;
 
-    document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('btn-' + metric).classList.add('active');
+    chart.config.type = isLine ? 'line' : 'bar';
+    chart.data.labels = v.labels;
+    chart.data.datasets[0] = {
+        label: cfg.label,
+        data,
+        borderColor: cfg.color,
+        backgroundColor: isLine ? cfg.color + '18' : cfg.color + 'cc',
+        borderWidth: isLine ? 2 : 0,
+        pointRadius: isLine ? 3 : 0,
+        fill: isLine,
+        tension: 0.4,
+        borderRadius: isLine ? 0 : 6
+    };
+    chart.options.scales.y.ticks.callback = v => cfg.prefix + v.toLocaleString('en-IN');
+    chart.options.onClick = (evt, elements) => {
+        if (elements.length > 0 && v.canDrillDown) drillDown(elements[0].index);
+    };
+    chart.update();
+    updateBreadcrumb();
 }
 
-// ── Category Donut Chart ──
-const catLabels = {{ categories | map(attribute='category') | list | tojson }};
-const catData   = {{ categories | map(attribute='revenue')  | list | tojson }};
+function drillDown(index) {
+    const v = currentView;
+    if (!v.canDrillDown) return;
+    const key = v.keys[index];
+    let indices;
+    if (v.level === 'month') {
+        indices = rawData.labels.map((d, i) => d.startsWith(key) ? i : -1).filter(i => i >= 0);
+    } else {
+        const ws = new Date(key), we = new Date(key);
+        we.setDate(we.getDate() + 6);
+        indices = rawData.labels.map((d, i) => {
+            const dt = new Date(d);
+            return (dt >= ws && dt <= we) ? i : -1;
+        }).filter(i => i >= 0);
+    }
+    if (!indices.length) return;
+    drillStack.push(currentView);
+    currentView = {
+        labels:  indices.map(i => rawData.labels[i]),
+        keys:    indices.map(i => rawData.labels[i]),
+        revenue: indices.map(i => rawData.revenue[i]),
+        profit:  indices.map(i => rawData.profit[i]),
+        units:   indices.map(i => rawData.units[i]),
+        level: 'day',
+        canDrillDown: false,
+        drillTitle: v.labels[index]
+    };
+    renderChart();
+}
 
+function drillUp() {
+    if (!drillStack.length) return;
+    currentView = drillStack.pop();
+    renderChart();
+}
+
+function updateBreadcrumb() {
+    const text = document.getElementById('breadcrumb-text');
+    const btn  = document.getElementById('drill-back-btn');
+    const hint = document.getElementById('drill-hint');
+    const levels = drillStack.map(v => ({ month: 'Monthly', week: 'Weekly', day: 'Daily' }[v.level] || v.level));
+    const curLabel = { month: 'Monthly', week: 'Weekly', day: 'Daily' }[currentView.level] || currentView.level;
+    if (currentView.drillTitle) {
+        levels.push(curLabel);
+        text.textContent = [...levels, currentView.drillTitle].join(' › ');
+    } else {
+        text.textContent = [...levels, curLabel].join(' › ');
+    }
+    btn.style.display = drillStack.length > 0 ? 'inline-block' : 'none';
+    hint.textContent  = currentView.canDrillDown ? '(click a bar to drill down)' : '';
+}
+
+function setMetric(metric) {
+    currentMetric = metric;
+    document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-' + metric).classList.add('active');
+    renderChart();
+}
+
+// ── Init ──
+currentView = getDefaultView();
+renderChart();
+
+// ── Category Donut Chart ──
+const catLabels  = {{ categories | map(attribute='category') | list | tojson }};
+const catRevenue = {{ categories | map(attribute='revenue')  | list | tojson }};
 const catCtx = document.getElementById('categoryChart');
 if (catCtx && catLabels.length > 0) {
     new Chart(catCtx, {
@@ -450,71 +640,67 @@ if (catCtx && catLabels.length > 0) {
         data: {
             labels: catLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
             datasets: [{
-                data: catData,
-                backgroundColor: [
-                    '#00c853','#1565c0','#f9a825',
-                    '#e53935','#7b1fa2','#00838f',
-                    '#558b2f','#e65100'
-                ],
+                data: catRevenue,
+                backgroundColor: ['#00c853','#1565c0','#f9a825','#e53935','#7b1fa2','#00838f','#558b2f','#e65100'],
                 borderWidth: 2,
                 borderColor: '#fff'
             }]
         },
         options: {
             responsive: true,
-            plugins: {
-                legend: { position: 'bottom', labels: { font: { size: 11 } } }
-            }
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
         }
     });
 }
 
-// ── Column Mapping Preview ──
-function previewColumns(input) {
+// ── Column Mapping — auto-fill from CSV headers ──
+function onFileSelected(input) {
     const file = input.files[0];
-    if (!file) return;
-
+    if (!file || !file.name.toLowerCase().endsWith('.csv')) return;
     const reader = new FileReader();
     reader.onload = function(e) {
-        const text = e.target.result;
-        let columns = [];
+        const firstLine = e.target.result.split('\n')[0];
+        const cols = firstLine.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (!cols.length) return;
 
-        if (file.name.endsWith('.csv')) {
-            const firstLine = text.split('\n')[0];
-            columns = firstLine.split(',').map(c => c.trim().replace(/"/g, ''));
-        }
-
-        if (columns.length > 0) {
-            const mapping = document.getElementById('column-mapping');
-            mapping.style.display = 'block';
-
-            const selects = mapping.querySelectorAll('select');
-            selects.forEach(select => {
-                const currentVal = select.value;
-                while (select.options.length > 1) select.remove(1);
-                columns.forEach(col => {
-                    const opt = new Option(col, col);
-                    select.add(opt);
-                });
-
-                // Auto-match by name
-                const fieldName = select.name.replace('map_', '');
-                const match = columns.find(c =>
-                    c.toLowerCase().replace(/\s/g,'_') === fieldName
-                );
-                if (match) select.value = match;
-            });
-        }
+        const fieldMap = {
+            product_name:   ['product_name','product','name','item','item_name'],
+            quantity_sold:  ['quantity_sold','qty','quantity','units','sold'],
+            selling_price:  ['selling_price','price','sp','sale_price','mrp'],
+            purchase_price: ['purchase_price','cost','cp','cost_price','buying_price'],
+            sale_date:      ['sale_date','date','sold_on','transaction_date'],
+            category:       ['category','cat','type','department']
+        };
+        Object.entries(fieldMap).forEach(([field, aliases]) => {
+            const el = document.getElementById('col_' + field);
+            if (!el) return;
+            const match = cols.find(c => aliases.includes(c.toLowerCase().replace(/\s+/g,'_')));
+            if (match) el.value = match;
+        });
     };
     reader.readAsText(file);
 }
 
-// ── Category Drilldown ──
-function drillCategory(category) {
-    const section = document.getElementById('products-section');
-    section.scrollIntoView({ behavior: 'smooth' });
-    section.style.border = '2px solid var(--green)';
-    setTimeout(() => section.style.border = '', 2000);
+// ── Before upload: apply column mapping via hidden fields ──
+function applyMappingBeforeUpload() {
+    const form = document.getElementById('uploadForm');
+    const fields = ['product_name','quantity_sold','selling_price','purchase_price','sale_date','category'];
+    fields.forEach(field => {
+        const inputEl = document.getElementById('col_' + field);
+        if (!inputEl) return;
+        const val = inputEl.value.trim();
+        if (val && val !== field) {
+            let hidden = form.querySelector(`input[name="mapping_${field}"]`);
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'mapping_' + field;
+                form.appendChild(hidden);
+            }
+            hidden.value = val;
+        }
+    });
+    return true;
 }
 </script>
 </body>

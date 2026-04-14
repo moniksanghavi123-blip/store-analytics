@@ -96,6 +96,7 @@
                                 <th>Plan</th>
                                 <th>Status</th>
                                 <th>Revenue (7d)</th>
+                                <th>Change Plan</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -120,15 +121,31 @@
                                 </td>
                                 <td>₹{{ store.revenue_7d or 0 }}</td>
                                 <td>
+                                    <form action="/admin/store/{{ store.id }}/change-plan" method="POST"
+                                          style="display:flex; gap:4px; align-items:center;">
+                                        <select name="plan"
+                                                style="font-size:12px; padding:4px 8px; border-radius:6px;
+                                                       border:1px solid var(--border); color:var(--text);">
+                                            <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
+                                            <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
+                                            <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
+                                        </select>
+                                        <button type="submit"
+                                                style="background:var(--blue-soft); color:var(--blue); border:none;
+                                                       border-radius:6px; padding:4px 8px; font-size:11px;
+                                                       font-weight:600; cursor:pointer;">
+                                            Set
+                                        </button>
+                                    </form>
+                                </td>
+                                <td>
                                     <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
                                     <form method="POST" action="/admin/store/{{ store.id }}/delete" class="delete-form">
                                         <input type="text" name="confirm_text"
                                                placeholder="DELETE {{ store.shop_name }}"
                                                required
                                                class="delete-input desktop" />
-                                        <button type="submit" class="delete-btn inline">
-                                            Delete
-                                        </button>
+                                        <button type="submit" class="delete-btn inline">Delete</button>
                                     </form>
                                 </td>
                             </tr>
@@ -199,6 +216,48 @@
             <p style="color:#888; font-size:14px;">No uploads yet.</p>
             {% endif %}
         </div>
+
+        <!-- PENDING PLAN REQUESTS -->
+        {% if pending_plan_requests %}
+        <div class="section">
+            <h2>📋 Pending Plan Change Requests</h2>
+            <div class="data-list">
+                {% for req in pending_plan_requests %}
+                <div class="data-card" style="flex-wrap:wrap; gap:10px;">
+                    <div style="flex:1; min-width:180px;">
+                        <div class="name">{{ req.shop_name.replace('_',' ') | title }}</div>
+                        <div class="sub">
+                            <span class="badge grey">{{ req.current_plan | title }}</span>
+                            <span style="margin:0 4px;">→</span>
+                            <span class="badge blue">{{ req.requested_plan | title }}</span>
+                            {% if req.note %}· {{ req.note }}{% endif %}
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <form action="/admin/update-plan" method="POST" style="margin:0;">
+                            <input type="hidden" name="store_id"   value="{{ req.store_id }}">
+                            <input type="hidden" name="new_plan"   value="{{ req.requested_plan }}">
+                            <input type="hidden" name="request_id" value="{{ req.id }}">
+                            <button type="submit"
+                                    style="background:var(--green-soft); color:#2e7d32; border:1px solid #c8e6c9;
+                                           border-radius:8px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">
+                                ✓ Approve
+                            </button>
+                        </form>
+                        <form action="/admin/reject-plan-request" method="POST" style="margin:0;">
+                            <input type="hidden" name="request_id" value="{{ req.id }}">
+                            <button type="submit"
+                                    style="background:var(--red-soft); color:#c62828; border:1px solid #ffcdd2;
+                                           border-radius:8px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">
+                                ✕ Reject
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <div class="section">
             <h2>🗑️ Recently Deleted Stores</h2>

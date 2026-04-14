@@ -94,14 +94,14 @@ def get_category_breakdown(store_id, days=7, period='7d',
     start, end = get_date_range(period, start_date, end_date)
     return run_query('''
         select
-            coalesce(category, 'general') as category,
+            coalesce(nullif(trim(category), ''), 'general') as category,
             sum(gross_revenue)  as revenue,
             sum(gross_profit)   as profit,
             sum(quantity_sold)  as units
         from sales_raw
         where store_id = %s
           and sale_date between %s and %s
-        group by category
+        group by coalesce(nullif(trim(category), ''), 'general')
         order by revenue desc
     ''', (store_id, start, end))
 
