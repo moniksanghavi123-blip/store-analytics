@@ -116,6 +116,21 @@ def get_summary_period_options():
         {"key": "yearly", "label": "Yearly"},
     ]
 
+
+def get_forecast_context(store_id, shop_name):
+    try:
+        from app.ai import forecast_next_week_revenue
+
+        return {
+            "forecast_data": forecast_next_week_revenue(store_id, shop_name),
+            "forecast_error": None,
+        }
+    except Exception as exc:
+        return {
+            "forecast_data": None,
+            "forecast_error": str(exc),
+        }
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -267,6 +282,7 @@ def dashboard(request: Request, period: str = "7d",
         order by uploaded_at desc
         limit 10
     ''', (store_id,))
+    forecast_context = get_forecast_context(store_id, store["shop_name"])
 
     trend_labels  = [str(d["sale_date"]) for d in daily_trend]
     trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
@@ -310,6 +326,8 @@ def dashboard(request: Request, period: str = "7d",
             "today":            date.today().isoformat(),
             "upgrade_requests": upgrade_requests,
             "summary_periods":  get_summary_period_options(),
+            "forecast_data":    forecast_context["forecast_data"],
+            "forecast_error":   forecast_context["forecast_error"],
         }
     )
 
@@ -560,6 +578,7 @@ def admin_store_detail(
         order by uploaded_at desc
         limit 10
     ''', (store_id,))
+    forecast_context = get_forecast_context(store_id, store["shop_name"])
 
     return templates.TemplateResponse(
         request=request,
@@ -587,6 +606,8 @@ def admin_store_detail(
             "upgrade_requests": [],
             "is_admin_view":  True,
             "summary_periods": get_summary_period_options(),
+            "forecast_data":   forecast_context["forecast_data"],
+            "forecast_error":  forecast_context["forecast_error"],
         }
     )
 
