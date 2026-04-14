@@ -69,14 +69,14 @@
         </div>
     </div>
 
-    <!-- PERFORMANCE CHART WITH DRILL-DOWN -->
+    <!-- PERFORMANCE CHART — all 3 metrics -->
     <div class="section">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:8px;">
             <h2 style="margin:0;">📈 Performance</h2>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button onclick="setMetric('revenue')" id="btn-revenue" class="chart-btn active">Revenue</button>
-                <button onclick="setMetric('profit')"  id="btn-profit"  class="chart-btn">Profit</button>
-                <button onclick="setMetric('units')"   id="btn-units"   class="chart-btn">Units</button>
+            <div style="display:flex; gap:12px; font-size:12px; color:var(--muted); align-items:center;">
+                <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;border-radius:3px;background:#00c853;display:inline-block;"></span>Revenue</span>
+                <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:3px;background:#1565c0;display:inline-block;border-radius:2px;"></span>Profit</span>
+                <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:3px;background:#f9a825;display:inline-block;border-radius:2px;"></span>Units</span>
             </div>
         </div>
 
@@ -91,7 +91,7 @@
             <span id="drill-hint" style="color:var(--muted); font-size:11px;"></span>
         </div>
 
-        <canvas id="performanceChart" height="200"></canvas>
+        <canvas id="performanceChart" height="220"></canvas>
     </div>
 
     <!-- CATEGORY BREAKDOWN -->
@@ -193,7 +193,14 @@
 
     <!-- UPLOAD FILE -->
     <div class="section">
-        <h2>📁 Upload Sales File</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+            <h2 style="margin:0;">📁 Upload Sales File</h2>
+            <a href="/static/sample_sales.csv" download
+               style="font-size:12px; font-weight:600; color:var(--blue); text-decoration:none;
+                      padding:6px 12px; background:var(--blue-soft); border-radius:8px; border:1px solid #bbdefb;">
+                ⬇ Download Sample CSV
+            </a>
+        </div>
         <p style="color:#666; font-size:13px; margin-bottom:12px;">
             Upload Excel (.xlsx) or CSV. Map your column headers below, then upload.
         </p>
@@ -289,60 +296,6 @@
         </form>
     </div>
 
-    <!-- ADMIN: SAVED COLUMN MAPPING CONFIGURATION -->
-    {% if is_admin_view %}
-    <div class="section">
-        <h2>🗂 Saved Column Mapping</h2>
-        <p style="font-size:13px; color:var(--muted); margin-bottom:12px;">
-            Set permanent column name mappings for this store. Applied automatically on every upload.
-        </p>
-        <form action="/store/{{ store.id }}/column-mapping/bulk" method="POST">
-            <div class="form-grid">
-                {% set required_fields = ['product_name', 'quantity_sold', 'selling_price', 'purchase_price', 'sale_date'] %}
-                {% for field in required_fields %}
-                {% set existing = mapping_rows | selectattr('target_column', 'equalto', field) | list %}
-                <div class="form-group" style="margin-bottom:8px;">
-                    <label style="font-size:12px;">{{ field.replace('_',' ') | title }} *</label>
-                    <input type="text" name="src_{{ field }}"
-                           value="{{ existing[0].source_column if existing else '' }}"
-                           placeholder="Your CSV column name"
-                           style="padding:8px 10px; font-size:13px; border:1.5px solid var(--border);
-                                  border-radius:8px; width:100%; background:white;" />
-                </div>
-                {% endfor %}
-            </div>
-            <button type="submit" class="btn" style="max-width:200px; margin-top:8px;">
-                Save Mappings 💾
-            </button>
-        </form>
-
-        {% if mapping_rows %}
-        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-            <p style="font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:600;">ACTIVE MAPPINGS</p>
-            <div class="data-list" style="gap:6px;">
-                {% for m in mapping_rows %}
-                <div style="display:flex; justify-content:space-between; align-items:center;
-                            padding:8px 12px; background:var(--bg); border-radius:8px;">
-                    <span style="font-size:13px;">
-                        <code style="background:#eee; padding:2px 6px; border-radius:4px;">{{ m.source_column }}</code>
-                        <span style="color:var(--muted); margin:0 6px;">→</span>
-                        <strong>{{ m.target_column }}</strong>
-                    </span>
-                    <form action="/store/{{ store.id }}/column-mapping/delete" method="POST" style="margin:0;">
-                        <input type="hidden" name="source_column" value="{{ m.source_column }}">
-                        <button type="submit"
-                                style="background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; font-weight:600;">
-                            ✕
-                        </button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
-
     <!-- UPLOAD HISTORY -->
     <div class="section">
         <h2>📁 Upload History</h2>
@@ -380,57 +333,101 @@
     <!-- PLAN INFO — BOTTOM -->
     <div class="section">
         <h2>📋 Your Plan</h2>
-        <div class="data-card" style="margin-bottom:12px;">
+
+        <!-- Current plan badge -->
+        <div class="data-card" style="margin-bottom:16px;">
             <div>
                 <div class="name">Current Plan</div>
                 <div class="sub">{{ store.store_type | title }} Store</div>
             </div>
-            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}">
+            <span class="badge {% if store.plan == 'pro' %}green{% elif store.plan == 'growth' %}blue{% else %}grey{% endif %}" style="font-size:14px; padding:6px 14px;">
                 {{ store.plan | title }}
             </span>
         </div>
 
         {% if not is_admin_view %}
-        <div style="margin-bottom:12px;">
-            <p style="font-size:13px; color:var(--muted); margin-bottom:8px;">
-                Want to upgrade? Send a request to admin.
+        <!-- Plan comparison table -->
+        <div style="overflow-x:auto; margin-bottom:20px;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:2px solid var(--border); color:var(--muted); font-weight:600;">Feature</th>
+                        <th style="text-align:center; padding:10px 12px; border-bottom:2px solid var(--border); {% if store.plan == 'starter' %}background:var(--bg); border-radius:8px 8px 0 0;{% endif %}">
+                            Starter<br><span style="font-weight:400; color:var(--muted); font-size:11px;">₹499/mo</span>
+                        </th>
+                        <th style="text-align:center; padding:10px 12px; border-bottom:2px solid var(--border); {% if store.plan == 'growth' %}background:var(--blue-soft); border-radius:8px 8px 0 0;{% endif %}">
+                            Growth<br><span style="font-weight:400; color:var(--muted); font-size:11px;">₹799/mo</span>
+                        </th>
+                        <th style="text-align:center; padding:10px 12px; border-bottom:2px solid var(--border); {% if store.plan == 'pro' %}background:#e8f5e9; border-radius:8px 8px 0 0;{% endif %}">
+                            Pro<br><span style="font-weight:400; color:var(--muted); font-size:11px;">₹1,299/mo</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set features = [
+                        ('Sales Data Upload', '✓', '✓', '✓'),
+                        ('Manual Sale Entry', '✓', '✓', '✓'),
+                        ('Inventory Alerts', '✓', '✓', '✓'),
+                        ('Performance Charts', 'Basic', 'Full', 'Full'),
+                        ('CSV Column Mapping', '✗', '✓', '✓'),
+                        ('Category Analytics', '✗', '✓', '✓'),
+                        ('AI Assistant', '✗', '✗', '✓'),
+                        ('Dead Stock Detection', '✗', '✓', '✓'),
+                        ('Upload History', '10 files', '50 files', 'Unlimited'),
+                    ] %}
+                    {% for feat, s, g, p in features %}
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:9px 12px; color:var(--text);">{{ feat }}</td>
+                        <td style="text-align:center; padding:9px 12px; color:{% if s == '✓' %}#2e7d32{% elif s == '✗' %}#bbb{% else %}var(--text){% endif %}; {% if store.plan == 'starter' %}background:var(--bg);{% endif %}">{{ s }}</td>
+                        <td style="text-align:center; padding:9px 12px; color:{% if g == '✓' %}#2e7d32{% elif g == '✗' %}#bbb{% else %}var(--text){% endif %}; {% if store.plan == 'growth' %}background:var(--blue-soft);{% endif %}">{{ g }}</td>
+                        <td style="text-align:center; padding:9px 12px; color:{% if p == '✓' %}#2e7d32{% elif p == '✗' %}#bbb{% else %}var(--text){% endif %}; {% if store.plan == 'pro' %}background:#e8f5e9;{% endif %}">{{ p }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Request upgrade (request-only, admin approves) -->
+        {% if upgrade_requests and upgrade_requests[0].status == 'pending' %}
+        <div class="info" style="font-size:13px;">
+            ⏳ Your request to upgrade to <strong>{{ upgrade_requests[0].requested_plan | title }}</strong> is pending admin approval.
+        </div>
+        {% else %}
+        <div style="background:var(--bg); border-radius:12px; padding:16px; border:1px solid var(--border);">
+            <p style="font-size:13px; font-weight:600; margin-bottom:4px;">Request a Plan Change</p>
+            <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+                Your request will be reviewed by the admin. You won't be charged automatically.
             </p>
             <form action="/request-plan-change" method="POST">
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                     <select name="requested_plan"
                             style="padding:10px; border:1.5px solid var(--border);
-                                   border-radius:8px; font-size:14px; flex:1;">
-                        <option value="starter">Starter — ₹499/month</option>
-                        <option value="growth">Growth — ₹799/month</option>
-                        <option value="pro">Pro — ₹1,299/month</option>
+                                   border-radius:8px; font-size:13px; flex:1; background:white;">
+                        <option value="starter" {% if store.plan == 'starter' %}disabled{% endif %}>Starter — ₹499/month</option>
+                        <option value="growth"  {% if store.plan == 'growth'  %}disabled{% endif %}>Growth — ₹799/month</option>
+                        <option value="pro"     {% if store.plan == 'pro'     %}disabled{% endif %}>Pro — ₹1,299/month</option>
                     </select>
-                    <button type="submit" class="btn" style="width:auto; padding:10px 16px; margin:0;">
-                        Request Change
-                    </button>
                 </div>
                 <input type="text" name="note"
-                       placeholder="Optional note to admin"
-                       style="margin-top:8px; width:100%; padding:10px;
-                              border:1.5px solid var(--border); border-radius:8px; font-size:14px;" />
+                       placeholder="Optional: tell admin why you want to change"
+                       style="width:100%; padding:10px; margin-bottom:10px;
+                              border:1.5px solid var(--border); border-radius:8px; font-size:13px; background:white;" />
+                <button type="submit" class="btn" style="max-width:200px; margin:0; background:var(--blue);">
+                    Send Request →
+                </button>
             </form>
-        </div>
-        {% if upgrade_requests %}
-        {% set req = upgrade_requests[0] %}
-        <div class="info" style="font-size:13px;">
-            ⏳ Plan change request to <strong>{{ req.requested_plan | title }}</strong>
-            is <strong>{{ req.status }}</strong>
         </div>
         {% endif %}
         {% endif %}
 
         {% if is_admin_view %}
-        <div style="margin-top:8px;">
-            <p style="font-size:13px; color:var(--muted); margin-bottom:8px;">Change plan for this store:</p>
+        <div style="margin-top:8px; background:var(--bg); border-radius:12px; padding:16px; border:1px solid var(--border);">
+            <p style="font-size:13px; font-weight:600; margin-bottom:8px;">Change Plan (Admin)</p>
             <form action="/admin/store/{{ store.id }}/change-plan" method="POST"
                   style="display:flex; gap:8px; flex-wrap:wrap;">
                 <select name="plan"
                         style="padding:10px; border:1.5px solid var(--border);
-                               border-radius:8px; font-size:14px; flex:1;">
+                               border-radius:8px; font-size:14px; flex:1; background:white;">
                     <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
                     <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
                     <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
@@ -458,13 +455,6 @@ const currentPeriod = "{{ period }}";
 // ── Drill-down state ──
 let drillStack = [];
 let currentView = null;
-let currentMetric = 'revenue';
-
-const metricConfig = {
-    revenue: { label: 'Revenue (₹)', color: '#00c853', prefix: '₹' },
-    profit:  { label: 'Profit (₹)',  color: '#1565c0', prefix: '₹' },
-    units:   { label: 'Units Sold',  color: '#f9a825', prefix: '' }
-};
 
 // ── Aggregation helpers ──
 function aggregateBy(by) {
@@ -519,50 +509,104 @@ function getDefaultView() {
     };
 }
 
-// ── Chart setup ──
+// ── Chart setup — 3 datasets, dual Y-axis ──
 const ctx = document.getElementById('performanceChart').getContext('2d');
 const chart = new Chart(ctx, {
     type: 'bar',
-    data: { labels: [], datasets: [{ data: [], borderRadius: 6 }] },
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'Revenue (₹)',
+                data: [],
+                type: 'bar',
+                backgroundColor: '#00c85366',
+                borderColor: '#00c853',
+                borderWidth: 1,
+                borderRadius: 5,
+                yAxisID: 'yMoney',
+                order: 3
+            },
+            {
+                label: 'Profit (₹)',
+                data: [],
+                type: 'line',
+                borderColor: '#1565c0',
+                backgroundColor: 'transparent',
+                borderWidth: 2.5,
+                pointRadius: 3,
+                pointBackgroundColor: '#1565c0',
+                tension: 0.4,
+                yAxisID: 'yMoney',
+                order: 2
+            },
+            {
+                label: 'Units',
+                data: [],
+                type: 'line',
+                borderColor: '#f9a825',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: '#f9a825',
+                tension: 0.4,
+                borderDash: [5, 3],
+                yAxisID: 'yUnits',
+                order: 1
+            }
+        ]
+    },
     options: {
         responsive: true,
         interaction: { mode: 'index', intersect: false },
         onClick: (evt, elements) => {
-            if (elements.length > 0) drillDown(elements[0].index);
+            if (elements.length > 0 && currentView.canDrillDown) drillDown(elements[0].index);
         },
-        plugins: { legend: { display: false } },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: ctx => {
+                        const v = ctx.dataset.yAxisID === 'yMoney'
+                            ? '₹' + ctx.parsed.y.toLocaleString('en-IN', {maximumFractionDigits: 0})
+                            : ctx.parsed.y.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' units';
+                        return ' ' + ctx.dataset.label + ': ' + v;
+                    }
+                }
+            }
+        },
         scales: {
-            y: {
+            yMoney: {
+                type: 'linear',
+                position: 'left',
                 beginAtZero: true,
-                ticks: { callback: v => metricConfig[currentMetric].prefix + v.toLocaleString('en-IN') }
+                ticks: { callback: v => '₹' + v.toLocaleString('en-IN') },
+                grid: { color: '#f0f0f0' }
+            },
+            yUnits: {
+                type: 'linear',
+                position: 'right',
+                beginAtZero: true,
+                ticks: { callback: v => v.toLocaleString('en-IN') },
+                grid: { display: false }
             }
         }
     }
 });
 
 function renderChart() {
-    const v   = currentView;
-    const cfg = metricConfig[currentMetric];
-    const data = v[currentMetric];
-    const isLine = v.level === 'day' && v.labels.length <= 31;
-
-    chart.config.type = isLine ? 'line' : 'bar';
-    chart.data.labels = v.labels;
-    chart.data.datasets[0] = {
-        label: cfg.label,
-        data,
-        borderColor: cfg.color,
-        backgroundColor: isLine ? cfg.color + '18' : cfg.color + 'cc',
-        borderWidth: isLine ? 2 : 0,
-        pointRadius: isLine ? 3 : 0,
-        fill: isLine,
-        tension: 0.4,
-        borderRadius: isLine ? 0 : 6
-    };
-    chart.options.scales.y.ticks.callback = v => cfg.prefix + v.toLocaleString('en-IN');
-    chart.options.onClick = (evt, elements) => {
-        if (elements.length > 0 && v.canDrillDown) drillDown(elements[0].index);
-    };
+    const v = currentView;
+    chart.data.labels              = v.labels;
+    chart.data.datasets[0].data   = v.revenue;
+    chart.data.datasets[1].data   = v.profit;
+    chart.data.datasets[2].data   = v.units;
+    // Switch to line for short daily views
+    const isShortDaily = v.level === 'day' && v.labels.length <= 31;
+    chart.data.datasets[0].type             = isShortDaily ? 'line' : 'bar';
+    chart.data.datasets[0].fill             = isShortDaily;
+    chart.data.datasets[0].backgroundColor  = isShortDaily ? '#00c85318' : '#00c85366';
+    chart.data.datasets[0].borderRadius     = isShortDaily ? 0 : 5;
+    chart.data.datasets[0].pointRadius      = isShortDaily ? 3 : 0;
     chart.update();
     updateBreadcrumb();
 }
@@ -617,13 +661,6 @@ function updateBreadcrumb() {
     }
     btn.style.display = drillStack.length > 0 ? 'inline-block' : 'none';
     hint.textContent  = currentView.canDrillDown ? '(click a bar to drill down)' : '';
-}
-
-function setMetric(metric) {
-    currentMetric = metric;
-    document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('btn-' + metric).classList.add('active');
-    renderChart();
 }
 
 // ── Init ──
