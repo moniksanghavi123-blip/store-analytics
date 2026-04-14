@@ -12,7 +12,8 @@ from app.whatsapp import send_store_summary, send_whatsapp_message
 from app.auth import send_otp, verify_otp, is_admin, get_store_by_phone_number
 from app.analytics import (
     build_summary_bundle, get_store_summary, get_top_products,
-    get_low_stock, get_dead_stock, get_daily_trend, get_category_breakdown
+    get_low_stock, get_dead_stock, get_daily_trend, get_category_breakdown,
+    build_dashboard_insights
 )
 from datetime import date, timedelta
 
@@ -88,6 +89,24 @@ def ensure_column_mapping_support():
     )
 
 
+def ensure_store_goal_support():
+    run_query(
+        '''
+        create table if not exists store_goals (
+            id serial primary key,
+            store_id integer not null references stores(id) on delete cascade,
+            goal_month date not null,
+            revenue_target numeric(12,2) default 0,
+            profit_target numeric(12,2) default 0,
+            created_at timestamp default now(),
+            updated_at timestamp default now(),
+            unique(store_id, goal_month)
+        )
+        ''',
+        fetch=False
+    )
+
+
 def get_plan_features(plan_name):
     return PLAN_FEATURES.get((plan_name or "starter").lower(), PLAN_FEATURES["starter"])
 
@@ -111,6 +130,7 @@ def encode_message(message):
 
 def get_summary_period_options():
     return [
+        {"key": "daily", "label": "Daily"},
         {"key": "weekly", "label": "Weekly"},
         {"key": "monthly", "label": "Monthly"},
         {"key": "yearly", "label": "Yearly"},
@@ -260,6 +280,8 @@ def dashboard(request: Request, period: str = "7d",
     if not store:
         return RedirectResponse(url="/login", status_code=302)
 
+    ensure_store_goal_support()
+
     store_id = store['id']
 
     # Parse custom dates
@@ -283,6 +305,13 @@ def dashboard(request: Request, period: str = "7d",
         limit 10
     ''', (store_id,))
     forecast_context = get_forecast_context(store_id, store["shop_name"])
+    dashboard_insights = build_dashboard_insights(
+        store_id,
+        phone_number=store.get("phone_number"),
+        period=period,
+        start_date=sd,
+        end_date=ed,
+    )
 
     trend_labels  = [str(d["sale_date"]) for d in daily_trend]
     trend_revenue = [float(d["revenue"] or 0) for d in daily_trend]
@@ -328,6 +357,7 @@ def dashboard(request: Request, period: str = "7d",
             "summary_periods":  get_summary_period_options(),
             "forecast_data":    forecast_context["forecast_data"],
             "forecast_error":   forecast_context["forecast_error"],
+            **dashboard_insights,
         }
     )
 
@@ -532,6 +562,7 @@ def admin_store_detail(
         return RedirectResponse(url="/login", status_code=302)
 
     ensure_store_soft_delete_support()
+    ensure_store_goal_support()
     store = run_query(
         '''
         select * from stores
@@ -579,6 +610,13 @@ def admin_store_detail(
         limit 10
     ''', (store_id,))
     forecast_context = get_forecast_context(store_id, store["shop_name"])
+    dashboard_insights = build_dashboard_insights(
+        store_id,
+        phone_number=store.get("phone_number"),
+        period=period,
+        start_date=sd,
+        end_date=ed,
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -608,8 +646,57 @@ def admin_store_detail(
             "summary_periods": get_summary_period_options(),
             "forecast_data":   forecast_context["forecast_data"],
             "forecast_error":  forecast_context["forecast_error"],
+            **dashboard_insights,
         }
     )
+
+
+@app.post("/store/{store_id}/goals")
+def save_store_goals(
+    request: Request,
+    store_id: int,
+    revenue_target: float = Form(0),
+    profit_target: float = Form(0),
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    admin_view = is_admin(phone)
+    if admin_view:
+        store_rows = run_query(
+            "select * from stores where id = %s and coalesce(is_active, true) = true",
+            (store_id,),
+        )
+        store = store_rows[0] if store_rows else None
+    else:
+        store = get_store_by_phone_number(phone)
+        if store and store["id"] != store_id:
+            store = None
+
+    if not store:
+        redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    ensure_store_goal_support()
+    month_start = date.today().replace(day=1)
+    run_query(
+        '''
+        insert into store_goals (store_id, goal_month, revenue_target, profit_target, updated_at)
+        values (%s, %s, %s, %s, now())
+        on conflict (store_id, goal_month)
+        do update set
+            revenue_target = excluded.revenue_target,
+            profit_target = excluded.profit_target,
+            updated_at = now()
+        ''',
+        (store_id, month_start, max(revenue_target, 0), max(profit_target, 0)),
+        fetch=False,
+    )
+
+    success = encode_message("Monthly targets updated")
+    redirect_url = f"/admin/store/{store_id}?success={success}" if admin_view else f"/dashboard?success={success}"
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 @app.get("/store/{store_id}/summary-file")
@@ -634,7 +721,7 @@ def download_summary_file(request: Request, store_id: int, period_key: str = "we
         redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
         return RedirectResponse(url=redirect_url, status_code=302)
 
-    if period_key not in {"weekly", "monthly", "yearly"}:
+    if period_key not in {"daily", "weekly", "monthly", "yearly"}:
         redirect_url = f"/admin/store/{store_id}?error=Invalid+summary+period" if admin_view else "/dashboard?error=Invalid+summary+period"
         return RedirectResponse(url=redirect_url, status_code=302)
 
@@ -679,7 +766,7 @@ def share_summary(
         redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
         return RedirectResponse(url=redirect_url, status_code=302)
 
-    if period_key not in {"weekly", "monthly", "yearly"}:
+    if period_key not in {"daily", "weekly", "monthly", "yearly"}:
         redirect_url = f"/admin/store/{store_id}?error=Invalid+summary+period" if admin_view else "/dashboard?error=Invalid+summary+period"
         return RedirectResponse(url=redirect_url, status_code=302)
 
@@ -1276,7 +1363,15 @@ async def receive_message(
         elif msg_type == "text":
             plan_features = get_plan_features(store.get("plan"))
             text = message['text']['body'].lower().strip()
-            if text in ["summary", "report", "stats", "weekly summary", "weekly report"]:
+            if text in ["daily summary", "today summary", "daily report"]:
+                background_tasks.add_task(
+                    send_store_summary,
+                    store['id'],
+                    store['shop_name'],
+                    phone,
+                    "daily"
+                )
+            elif text in ["summary", "report", "stats", "weekly summary", "weekly report"]:
                 background_tasks.add_task(
                     send_store_summary,
                     store['id'],

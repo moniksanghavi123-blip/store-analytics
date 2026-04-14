@@ -47,6 +47,8 @@ def format_summary_message(shop_name, summary_bundle):
 
 ⚠️ *Low Stock:* {summary_bundle['low_stock']}
 😴 *Dead Stock:* {summary_bundle['dead_stock']}
+🛒 *Reorder Soon:* {summary_bundle.get('reorder_summary', 'None')}
+🚨 *Stockout Risk:* {summary_bundle.get('stockout_summary', 'None')}
 
 _Powered by StoreIQ_"""
 

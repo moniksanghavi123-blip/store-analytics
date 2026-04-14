@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from app.analytics import (
+    build_dashboard_insights,
     get_category_breakdown,
     get_daily_trend,
     get_dead_stock,
@@ -45,6 +46,7 @@ def build_store_context(store_id):
     dead_stock = get_dead_stock(store_id)
     daily_trend = get_daily_trend(store_id, period="7d")
     categories = get_category_breakdown(store_id, period="30d")
+    insights = build_dashboard_insights(store_id, period="30d")
 
     context = f"""
 STORE DATA — LAST 30 DAYS:
@@ -69,6 +71,21 @@ DAILY REVENUE TREND (last 7 days):
 
 CATEGORY BREAKDOWN:
 {chr(10).join([f"- {c['category'].title()}: ₹{c['revenue']} revenue, {int(c['units'])} units" for c in categories]) or 'No data'}
+
+TOP PROFIT PRODUCTS:
+{chr(10).join([f"- {p['product_name'].title()}: ₹{p['total_profit']} profit at {p['margin_pct']}% margin" for p in insights['top_profit_products']]) or 'None'}
+
+REORDER SUGGESTIONS:
+{chr(10).join([f"- {p['product_name'].title()}: order about {p['reorder_qty']} units, around {p['days_left']} days of stock left" for p in insights['reorder_suggestions']]) or 'None'}
+
+STOCKOUT RISK:
+{chr(10).join([f"- {p['product_name'].title()}: may stock out in {p['days_left']} days" for p in insights['stockout_predictions']]) or 'None'}
+
+PRICE RECOMMENDATIONS:
+{chr(10).join([f"- {p['product_name'].title()}: margin {p['margin_pct']}%, suggested price ₹{p['suggested_price']}" for p in insights['price_recommendations']]) or 'None'}
+
+SEASONAL / PROMOTION NOTES:
+{chr(10).join([f"- {item['title']}: {item['detail']}" for item in insights['seasonal_insights']]) or 'None'}
 """
     return context
 
