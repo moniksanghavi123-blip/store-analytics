@@ -409,20 +409,10 @@
 
         {% if is_admin_view %}
         <div style="margin-top:8px; background:var(--bg); border-radius:12px; padding:16px; border:1px solid var(--border);">
-            <p style="font-size:13px; font-weight:600; margin-bottom:8px;">Change Plan (Admin)</p>
-            <form action="/admin/store/{{ store.id }}/change-plan" method="POST"
-                  style="display:flex; gap:8px; flex-wrap:wrap;">
-                <select name="plan"
-                        style="padding:10px; border:1.5px solid var(--border);
-                               border-radius:8px; font-size:14px; flex:1; background:white;">
-                    <option value="starter" {% if store.plan == 'starter' %}selected{% endif %}>Starter</option>
-                    <option value="growth"  {% if store.plan == 'growth'  %}selected{% endif %}>Growth</option>
-                    <option value="pro"     {% if store.plan == 'pro'     %}selected{% endif %}>Pro</option>
-                </select>
-                <button type="submit" class="btn" style="width:auto; padding:10px 16px; margin:0;">
-                    Change Plan
-                </button>
-            </form>
+            <p style="font-size:13px; font-weight:600; margin-bottom:8px;">Plan</p>
+            <p style="margin:0; font-size:14px; color:var(--text);">
+                You are on the <strong>Pro</strong> plan. Plan changes are not allowed here.
+            </p>
         </div>
         {% endif %}
     </div>
