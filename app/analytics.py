@@ -133,3 +133,51 @@ def build_summary(store_id, period='7d'):
         "low_stock":     low_stock_str,
         "dead_stock":    dead_stock_str
     }
+
+
+def get_period_config(period_key):
+    period_map = {
+        "weekly": {
+            "analytics_period": "7d",
+            "label": "Weekly",
+            "days": 7,
+        },
+        "monthly": {
+            "analytics_period": "30d",
+            "label": "Monthly",
+            "days": 30,
+        },
+        "yearly": {
+            "analytics_period": "1y",
+            "label": "Yearly",
+            "days": 365,
+        },
+    }
+    return period_map.get(period_key, period_map["weekly"])
+
+
+def build_summary_bundle(store_id, period_key="weekly"):
+    config = get_period_config(period_key)
+    summary = build_summary(store_id, period=config["analytics_period"])
+    return {
+        **summary,
+        "period_key": period_key,
+        "period_label": config["label"],
+        "days": config["days"],
+    }
+
+
+def get_recent_revenue_trend(store_id, days=56):
+    return run_query(
+        '''
+        select
+            sale_date,
+            coalesce(sum(gross_revenue), 0) as revenue
+        from sales_raw
+        where store_id = %s
+          and sale_date >= current_date - %s
+        group by sale_date
+        order by sale_date asc
+        ''',
+        (store_id, days)
+    )

@@ -69,6 +69,27 @@
         </div>
     </div>
 
+    <div class="section">
+        <h2>📤 Owner Reports</h2>
+        <p style="color:var(--muted); font-size:13px; margin-bottom:12px;">
+            Share ready-to-send weekly, monthly, yearly, and AI forecast updates directly on WhatsApp.
+        </p>
+        <div class="action-row">
+            {% for summary_period in summary_periods %}
+            <form action="/store/{{ store.id }}/share-summary" method="POST" class="inline-action-form">
+                <input type="hidden" name="period_key" value="{{ summary_period.key }}">
+                <button type="submit" class="secondary-btn">{{ summary_period.label }} Summary</button>
+            </form>
+            <a href="/store/{{ store.id }}/summary-file?period_key={{ summary_period.key }}" class="secondary-link">
+                Download {{ summary_period.label }} File
+            </a>
+            {% endfor %}
+            <form action="/store/{{ store.id }}/share-forecast" method="POST" class="inline-action-form">
+                <button type="submit" class="secondary-btn forecast-btn">AI Forecast</button>
+            </form>
+        </div>
+    </div>
+
     <!-- PERFORMANCE CHART — all 3 metrics -->
     <div class="section">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:8px;">
@@ -195,7 +216,7 @@
     <div class="section">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
             <h2 style="margin:0;">📁 Upload Sales File</h2>
-            <a href="/static/sample_sales.csv" download
+            <a href="/demo/sample-file"
                style="font-size:12px; font-weight:600; color:var(--blue); text-decoration:none;
                       padding:6px 12px; background:var(--blue-soft); border-radius:8px; border:1px solid #bbdefb;">
                 ⬇ Download Sample CSV

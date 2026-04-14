@@ -515,6 +515,7 @@ tr:last-child td { border-bottom: none; }
 
 .delete-form {
     margin-top: 6px;
+    display: inline-block;
 }
 
 .delete-input {
@@ -556,6 +557,45 @@ tr:last-child td { border-bottom: none; }
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
+}
+
+.action-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.inline-action-form {
+    margin: 0;
+}
+
+.secondary-btn {
+    border: 1px solid #bbdefb;
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+}
+
+.secondary-link {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.forecast-btn {
+    border-color: #c8e6c9;
+    background: var(--green-soft);
+    color: var(--green-dark);
 }
 
 /* ─── CHARTS ─── */

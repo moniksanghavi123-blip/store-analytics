@@ -2,7 +2,7 @@ import os
 import httpx
 import tempfile
 from fastapi import FastAPI, Request, BackgroundTasks, Form, UploadFile, File
-from fastapi.responses import PlainTextResponse, RedirectResponse, FileResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
@@ -11,7 +11,7 @@ from app.processor import process_file, REQUIRED_COLUMNS, OPTIONAL_COLUMNS
 from app.whatsapp import send_store_summary, send_whatsapp_message
 from app.auth import send_otp, verify_otp, is_admin, get_store_by_phone_number
 from app.analytics import (
-    get_store_summary, get_top_products,
+    build_summary_bundle, get_store_summary, get_top_products,
     get_low_stock, get_dead_stock, get_daily_trend, get_category_breakdown
 )
 from datetime import date, timedelta
@@ -103,6 +103,18 @@ def get_store_column_mapping(store_id):
         (store_id,)
     )
     return {r["source_column"]: r["target_column"] for r in rows}
+
+
+def encode_message(message):
+    return (message or "").replace(" ", "+")
+
+
+def get_summary_period_options():
+    return [
+        {"key": "weekly", "label": "Weekly"},
+        {"key": "monthly", "label": "Monthly"},
+        {"key": "yearly", "label": "Yearly"},
+    ]
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -296,7 +308,8 @@ def dashboard(request: Request, period: str = "7d",
             "start_date":       start_date,
             "end_date":         end_date,
             "today":            date.today().isoformat(),
-            "upgrade_requests": upgrade_requests
+            "upgrade_requests": upgrade_requests,
+            "summary_periods":  get_summary_period_options(),
         }
     )
 
@@ -572,13 +585,150 @@ def admin_store_detail(
             "end_date":       end_date,
             "today":          date.today().isoformat(),
             "upgrade_requests": [],
-            "is_admin_view":  True
+            "is_admin_view":  True,
+            "summary_periods": get_summary_period_options(),
         }
     )
 
 
+@app.get("/store/{store_id}/summary-file")
+def download_summary_file(request: Request, store_id: int, period_key: str = "weekly"):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    admin_view = is_admin(phone)
+    if admin_view:
+        store_rows = run_query(
+            "select * from stores where id = %s and coalesce(is_active, true) = true",
+            (store_id,),
+        )
+        store = store_rows[0] if store_rows else None
+    else:
+        store = get_store_by_phone_number(phone)
+        if store and store["id"] != store_id:
+            store = None
+
+    if not store:
+        redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    if period_key not in {"weekly", "monthly", "yearly"}:
+        redirect_url = f"/admin/store/{store_id}?error=Invalid+summary+period" if admin_view else "/dashboard?error=Invalid+summary+period"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    summary = build_summary_bundle(store["id"], period_key=period_key)
+    file_body = (
+        f"{store['shop_name'].replace('_', ' ').title()} - {summary['period_label']} Summary\n"
+        f"Revenue: ₹{summary['total_revenue']}\n"
+        f"Profit: ₹{summary['total_profit']} ({summary['margin_pct']}% margin)\n"
+        f"Units Sold: {summary['total_units']}\n\n"
+        f"Top Products:\n{summary['top_products'] or 'No standout products yet'}\n\n"
+        f"Low Stock: {summary['low_stock']}\n"
+        f"Dead Stock: {summary['dead_stock']}\n"
+    )
+    filename = f"{store['shop_name']}-{period_key}-summary.txt"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=file_body, media_type="text/plain", headers=headers)
+
+
+@app.post("/store/{store_id}/share-summary")
+def share_summary(
+    request: Request,
+    store_id: int,
+    period_key: str = Form(...),
+):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    admin_view = is_admin(phone)
+    if admin_view:
+        store_rows = run_query(
+            "select * from stores where id = %s and coalesce(is_active, true) = true",
+            (store_id,),
+        )
+        store = store_rows[0] if store_rows else None
+    else:
+        store = get_store_by_phone_number(phone)
+        if store and store["id"] != store_id:
+            store = None
+
+    if not store:
+        redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    if period_key not in {"weekly", "monthly", "yearly"}:
+        redirect_url = f"/admin/store/{store_id}?error=Invalid+summary+period" if admin_view else "/dashboard?error=Invalid+summary+period"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    sent = send_store_summary(
+        store_id=store["id"],
+        shop_name=store["shop_name"],
+        phone_number=store["phone_number"],
+        period_key=period_key,
+    )
+    if not sent:
+        redirect_url = f"/admin/store/{store_id}?error=Failed+to+send+summary" if admin_view else "/dashboard?error=Failed+to+send+summary"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    success = encode_message(f"{period_key.title()} summary shared with owner")
+    redirect_url = f"/admin/store/{store_id}?success={success}" if admin_view else f"/dashboard?success={success}"
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@app.post("/store/{store_id}/share-forecast")
+def share_forecast(request: Request, store_id: int):
+    phone = request.cookies.get("phone")
+    if not phone:
+        return RedirectResponse(url="/login", status_code=302)
+
+    admin_view = is_admin(phone)
+    if admin_view:
+        store_rows = run_query(
+            "select * from stores where id = %s and coalesce(is_active, true) = true",
+            (store_id,),
+        )
+        store = store_rows[0] if store_rows else None
+    else:
+        store = get_store_by_phone_number(phone)
+        if store and store["id"] != store_id:
+            store = None
+
+    if not store:
+        redirect_url = f"/admin/store/{store_id}?error=Store+not+found" if admin_view else "/dashboard?error=Store+not+found"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    try:
+        from app.ai import forecast_next_week_revenue
+
+        forecast = forecast_next_week_revenue(store["id"], store["shop_name"])
+        message = (
+            f"📈 *{store['shop_name'].replace('_', ' ').title()}* — Next Week Revenue Forecast\n\n"
+            f"Predicted revenue: *₹{forecast['forecast_revenue']}*\n"
+            f"Last week: ₹{forecast['recent_week_revenue']}\n"
+            f"Average weekly revenue: ₹{forecast['average_weekly_revenue']}\n"
+            f"Confidence: {forecast['confidence'].title()}\n\n"
+            f"{forecast['explanation']}"
+        )
+        sent = send_whatsapp_message(store["phone_number"], message)
+        if not sent:
+            raise RuntimeError("Message send failed")
+        success = encode_message("Forecast shared with owner")
+        redirect_url = f"/admin/store/{store_id}?success={success}" if admin_view else f"/dashboard?success={success}"
+        return RedirectResponse(url=redirect_url, status_code=302)
+    except ValueError as exc:
+        error = encode_message(str(exc))
+        redirect_url = f"/admin/store/{store_id}?error={error}" if admin_view else f"/dashboard?error={error}"
+        return RedirectResponse(url=redirect_url, status_code=302)
+    except Exception as exc:
+        print(f"Forecast share error: {exc}")
+        redirect_url = f"/admin/store/{store_id}?error=Failed+to+share+forecast" if admin_view else "/dashboard?error=Failed+to+share+forecast"
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+
 @app.post("/admin/store/{store_id}/delete")
-def delete_store(request: Request, store_id: int, confirm_text: str = Form(...)):
+def delete_store(request: Request, store_id: int):
     phone = request.cookies.get("phone")
     if not phone or not is_admin(phone):
         return RedirectResponse(url="/login", status_code=302)
@@ -600,16 +750,6 @@ def delete_store(request: Request, store_id: int, confirm_text: str = Form(...))
         )
 
     store = store_rows[0]
-    expected = f"DELETE {store['shop_name']}"
-    if confirm_text.strip() != expected:
-        return RedirectResponse(
-            url=(
-                "/admin?error=Delete+confirmation+mismatch.+"
-                f"Type+{expected.replace(' ', '+')}+to+delete."
-            ),
-            status_code=302
-        )
-
     run_query(
         '''
         update stores
@@ -1115,12 +1255,34 @@ async def receive_message(
         elif msg_type == "text":
             plan_features = get_plan_features(store.get("plan"))
             text = message['text']['body'].lower().strip()
-            if text in ["summary", "report", "stats"]:
+            if text in ["summary", "report", "stats", "weekly summary", "weekly report"]:
                 background_tasks.add_task(
                     send_store_summary,
                     store['id'],
                     store['shop_name'],
-                    phone
+                    phone,
+                    "weekly"
+                )
+            elif text in ["monthly summary", "monthly report"]:
+                background_tasks.add_task(
+                    send_store_summary,
+                    store['id'],
+                    store['shop_name'],
+                    phone,
+                    "monthly"
+                )
+            elif text in ["yearly summary", "annual summary", "yearly report"]:
+                background_tasks.add_task(
+                    send_store_summary,
+                    store['id'],
+                    store['shop_name'],
+                    phone,
+                    "yearly"
+                )
+            elif text in ["forecast", "sales forecast", "next week forecast"]:
+                background_tasks.add_task(
+                    handle_sales_forecast,
+                    store
                 )
             else:
                 if plan_features["ai_assistant"]:
@@ -1133,7 +1295,8 @@ async def receive_message(
                     send_whatsapp_message(
                         phone,
                         "AI assistant is available on Pro plan. "
-                        "Reply with 'summary' to get your analytics report."
+                        "Reply with 'weekly summary', 'monthly summary', "
+                        "'yearly summary', or 'forecast' to get reports."
                     )
         else:
             send_whatsapp_message(
@@ -1216,7 +1379,7 @@ async def handle_file_upload(file_id, file_name, store):
                 phone,
                 f"✅ Processed *{result['rows_processed']}* rows successfully!"
             )
-        send_store_summary(store_id, store['shop_name'], phone)
+        send_store_summary(store_id, store['shop_name'], phone, "weekly")
 
         os.unlink(tmp_path)
 
@@ -1246,6 +1409,30 @@ async def handle_ai_question(question, store):
         send_whatsapp_message(store['phone_number'],
             "Sorry, I couldn't process your question right now. "
             "Try again in a moment.")
+
+
+async def handle_sales_forecast(store):
+    try:
+        from app.ai import forecast_next_week_revenue
+
+        forecast = forecast_next_week_revenue(store['id'], store['shop_name'])
+        message = (
+            f"📈 *{store['shop_name'].replace('_', ' ').title()}* — Next Week Revenue Forecast\n\n"
+            f"Predicted revenue: *₹{forecast['forecast_revenue']}*\n"
+            f"Last week: ₹{forecast['recent_week_revenue']}\n"
+            f"Average weekly revenue: ₹{forecast['average_weekly_revenue']}\n"
+            f"Confidence: {forecast['confidence'].title()}\n\n"
+            f"{forecast['explanation']}"
+        )
+        send_whatsapp_message(store['phone_number'], message)
+    except ValueError as exc:
+        send_whatsapp_message(store['phone_number'], str(exc))
+    except Exception as exc:
+        print(f"Forecast error: {exc}")
+        send_whatsapp_message(
+            store['phone_number'],
+            "Sorry, I couldn't generate the sales forecast right now. Try again shortly."
+        )
 
 # ─────────────────────────────────────────
 # PLAN CHANGE REQUEST (Store Owner)

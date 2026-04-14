@@ -140,11 +140,8 @@
                                 </td>
                                 <td>
                                     <a href="/admin/store/{{ store.id }}" class="view-link">View →</a>
-                                    <form method="POST" action="/admin/store/{{ store.id }}/delete" class="delete-form">
-                                        <input type="text" name="confirm_text"
-                                               placeholder="DELETE {{ store.shop_name }}"
-                                               required
-                                               class="delete-input desktop" />
+                                    <form method="POST" action="/admin/store/{{ store.id }}/delete" class="delete-form"
+                                          onsubmit="return confirm('Delete {{ store.shop_name.replace('_', ' ') | title }}? You can restore it later.');">
                                         <button type="submit" class="delete-btn inline">Delete</button>
                                     </form>
                                 </td>
